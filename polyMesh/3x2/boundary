@@ -1,0 +1,31 @@
+4
+(
+    left
+    {
+        type            wall;
+        inGroups        1(wall);
+        nFaces          2;
+        boundaryList    (0 3); (3 3);
+    }
+    right
+    {
+        type            wall;
+        inGroups        1(wall);
+        nFaces          2;
+        boundaryList    (2 1); (5 1);
+    }
+    top
+    {
+        type            wall;
+        inGroups        1(wall);
+        nFaces          3;
+        boundaryList    (3 2); (4 2); (5 2);
+    }
+    bottom
+    {
+        type            wall;
+        inGroups        1(wall);
+        nFaces          3;
+        boundaryList    (0 0); (1 0); (2 0);
+    }
+)
