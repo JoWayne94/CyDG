@@ -35,11 +35,31 @@ if __name__ == '__main__':
     uR = 0.0
     pR = 0.1
     xd = 0.5
+    primL = [rhoL, uL, pL]
+    primR = [rhoR, uR, pR]
 
     time = 0.0
     endTime = 1.0
     nCells = len(mesh.connectivityData.cells)
     quadCoords = np.array([mesh.connectivityData.cells[i].GetQuadratureCoords for i in range(nCells)]).reshape(-1)
+    print(quadCoords)
+    # Initial conditions
+    nCoords = len(quadCoords)
+    u = np.empty((nCoords, 3))
+    for i in range(nCoords):
+        if quadCoords[i] < xd:
+            u[i] = primL
+        else:
+            u[i] = primR
+
+    for i in range(nCells):
+        mesh.connectivityData.cells[i].uCoeffs[0] = rhoL
+        mesh.connectivityData.cells[i].uCoeffs[1:] = 0
+        print(mesh.connectivityData.cells[i].uCoeffs)
+        mesh.connectivityData.cells[i].nSoln = np.matmul(mesh.connectivityData.cells[i].basisMatrix,
+                                                         mesh.connectivityData.cells[i].uCoeffs)
+        print(mesh.connectivityData.cells[i].nSoln)
+
     # while endTime - time > 1e-10:
     #
     #     deltaT = 0.5
@@ -56,4 +76,3 @@ if __name__ == '__main__':
     #         for face in mesh.connectivityData.cells[i].geomData.neighbourLabels:
     #
     #             if face is not None:
-

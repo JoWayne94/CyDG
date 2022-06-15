@@ -35,7 +35,7 @@ def calculateStdIntegration(func, quadrature, p, q):
     quad = Quad(np.array([0, 1, 2, 3]), np.array([[-1, -1], [1, -1], [1, 1], [-1, 1]]),
                 np.array([i[0] for i in paramQuad.zeros]), np.array([i[1] for i in paramQuad.zeros]))
     coords = quad.parametricMapping()  # points[i][0], points[i][1]
-    jacobian = quad.calculateJacobian()
+    jacobian = quad.detJacobian()
     integrand = 0
 
     for i in range(len(paramQuad.weights)):
@@ -60,7 +60,7 @@ def calculateLocIntegration(func, quadrature, p, q):
     quad = Quad(np.array([0, 1, 2, 3]), np.array([[0, -1], [1, -1], [1, 1], [0, 0]]),
                 np.array([i[0] for i in paramQuad.zeros]), np.array([i[1] for i in paramQuad.zeros]))
     coords = quad.parametricMapping()
-    jacobian = quad.calculateJacobian()
+    jacobian = quad.detJacobian()
     integrand = 0
 
     for i in range(len(paramQuad.weights)):

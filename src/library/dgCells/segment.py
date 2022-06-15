@@ -3,6 +3,8 @@ File: segment.py
 
 Description: Segment cell subclass. 1D implementation of a line
 """
+import numpy as np
+
 from src.library.dgCells.dgCell import DgCell as Cell
 from src.library.paramCells.basis import *
 from src.library.paramCells.paramSeg import ParamSeg
@@ -14,7 +16,9 @@ class Segment(Cell):
     def __init__(self, shape, pointlabels, points, neighbourlabels, p1):
         super().__init__(shape, pointlabels, points, neighbourlabels)
         self.P1 = p1
+        self.uCoeffs = np.empty(p1 + 1)
         self.paramSeg = ParamSeg("GL", p1)
+        self.uSoln = np.empty(len(self.paramSeg.zeros))
         self.basisMatrix = GetLegendre1d(self.paramSeg.zeros, p1)
         self.seg = SegGeom(self.geomData.pointLabels, self.geomData.points,
                            np.array([i[0] for i in self.paramSeg.zeros]))
