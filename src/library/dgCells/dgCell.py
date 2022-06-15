@@ -57,6 +57,7 @@ class DgCell(ABC):
         """
         self.calculations.V = self.calculateCellVolume()
         self.calculations.cellCentre = self.calculateCellCentre()
+        self.calculations.faceNormals = self.calculateFaceNormals()
 
         print("Cell created.\n")
 
@@ -88,5 +89,13 @@ class DgCell(ABC):
         """
         @:brief Calculates area of a polygon using the Shoelace formula
         :return: Volume of the cell
+        """
+        pass
+
+    @abstractmethod
+    def calculateFaceNormals(self):
+        """
+        @:brief Calculate unit normal vector of faces
+        :return: Unit normal vector ([number of faces, scalar])
         """
         pass
