@@ -63,16 +63,17 @@ class DgMesh:
 
         return cls(points, pointlabels, boundary, ndims)
 
-    def constructShapeBasedCells(self, polyMeshLocation, p1, p2=0):
+    def constructShapeBasedCells(self, polyMeshLocation, nvars, p1, p2=0):
         """
         @:brief Create shape-based cells only after points and point IDs arrays are created
+        :param nvars:            Number of state variables
         :param p1:               Polynomial order in the x-direction
         :param p2:               Polynomial order in the y-direction
         :param polyMeshLocation: Location of polyMesh directory in machine
         :return: Return cell IDs and cell objects list in mesh object
         """
         self.connectivityData.cellLabels, self.connectivityData.cells, self.derivedData.pointNeighbours, \
-            self.derivedData.faces = self.readCellsFromPolyMesh(polyMeshLocation, p1, p2)
+            self.derivedData.faces = self.readCellsFromPolyMesh(polyMeshLocation, nvars, p1, p2)
 
         print("Mesh created. \n")
 
@@ -119,9 +120,10 @@ class DgMesh:
 
         return pointLabelsArray, pointsArray
 
-    def readCellsFromPolyMesh(self, polyMeshLocation, p1, p2):
+    def readCellsFromPolyMesh(self, polyMeshLocation, nvars, p1, p2):
         """
         @:brief Read cells data from cells file and create corresponding containers
+        :param nvars:            Number of state variables
         :param p1:               Polynomial order in the x-direction
         :param p2:               Polynomial order in the y-direction
         :param polyMeshLocation: Location of polyMesh directory in machine
@@ -227,7 +229,8 @@ class DgMesh:
                                                      len({verticesList[i][vertex]}.intersection(
                                                          {facesList[face][0]})) > 0]), None))
 
-                cellsArray[i] = Seg(shapesArray[i], verticesList[i], self.connectivityData.points, neighboursList, p1)
+                cellsArray[i] = Seg(shapesArray[i], verticesList[i], self.connectivityData.points, neighboursList, nvars
+                                    , p1)
         else:
             # Initialise all cell objects array
             cellsArray = np.empty(nCells, dtype=Quad)

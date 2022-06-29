@@ -37,7 +37,7 @@ class Segment(Cell):
             self.uCoeffs = None
             self.uPhysical = None
 
-    def __init__(self, shape, pointlabels, points, neighbourlabels, p1):
+    def __init__(self, shape, pointlabels, points, neighbourlabels, nvars, p1):
         super().__init__(shape, pointlabels, points, neighbourlabels)
         self.paramSeg = ParamSeg("GL", p1)
         self.matCell = self.CellMatricesData()
@@ -54,8 +54,8 @@ class Segment(Cell):
         self.geomCell.detJacobian = (self.geomCell.segment.detJacobian()).reshape(-1, 1)
 
         # Solution data
-        self.solnCell.uCoeffs = np.zeros((p1 + 1, 3))
-        self.solnCell.uPhysical = np.empty((len(self.paramSeg.zeros), 3))
+        self.solnCell.uCoeffs = np.zeros((p1 + 1, nvars))
+        self.solnCell.uPhysical = np.zeros((len(self.paramSeg.zeros), nvars))
 
     def calculateCellVolume(self):
         return abs(self.geomData.points[self.geomData.pointLabels[0]][0] -
@@ -76,6 +76,7 @@ class Segment(Cell):
         """
         massMatrix = np.matmul(self.matCell.basisMatrix.transpose(), self.matCell.basisMatrix * self.paramSeg.weights *
                                abs(self.geomCell.detJacobian))
+        # massMatrix = np.matmul(self.matCell.basisMatrix.transpose(), self.matCell.basisMatrix)
 
         return massMatrix
 
@@ -88,6 +89,11 @@ class Segment(Cell):
         stiffnessMatrix = np.matmul(self.geomCell.segment.dxi1dx1 * self.matCell.derivMatrix[:, :, 0].transpose(),
                                     self.matCell.basisMatrix * self.paramSeg.weights
                                     * abs(self.geomCell.detJacobian))
+        # stiffnessMatrix = np.matmul(self.matCell.basisMatrix.transpose() * self.paramSeg.weights
+        #                             * abs(self.geomCell.detJacobian), self.geomCell.segment.dxi1dx1 *
+        #                             self.matCell.derivMatrix[:, :, 0])
+        # stiffnessMatrix = self.geomCell.segment.dxi1dx1 * self.matCell.derivMatrix[:, :, 0].transpose() \
+        #                   * self.paramSeg.weights * abs(self.geomCell.detJacobian)
 
         return stiffnessMatrix
 

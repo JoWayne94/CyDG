@@ -63,10 +63,10 @@ class ParamSeg(Cell):
         :return: Quadrature point coordinates and weights
         """
         # If p is even, add 1
-        if self.p % 2 == 0:
-            self.p += 1
+        # if self.p % 2 == 0:
+        #     self.p += 1
         # Number of integration points to obtain exact integration given polynomial order
-        nZeros = (self.p + 1) // 2
+        nZeros = (self.p + 1)  # // 2
 
         qZeros, qWeights = np.polynomial.legendre.leggauss(nZeros)
 
