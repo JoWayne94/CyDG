@@ -53,13 +53,13 @@ class DgCell(ABC):
         :param V:           Cell volume
         :param cellCentre:  Cell centre
         :param massMatrix:  Cellular mass matrix -> B^T W B
-        :param stiffnessMatrix: Cellular stiffness matrix -> (D B)^T W B
+        :param stiffnessMatrix: Cellular stiffness matrix -> d xi/d x (D B)^T W B
         """
         self.calculations.V = self.calculateCellVolume()
         self.calculations.cellCentre = self.calculateCellCentre()
         self.calculations.faceNormals = self.calculateFaceNormals()
 
-        print("Cell created.\n")
+        # print("Cell created.\n")
 
     def calculateCellCentre(self):
         """

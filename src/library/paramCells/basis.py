@@ -6,7 +6,7 @@ Description: Contains methods of each basis as shape functions in parametric spa
 import numpy as np
 
 
-def GetMonomial1d(xCoords, p):
+def Monomial1d(xCoords, p):
     """
     @:brief Get modal monomials in one-dimension
     :param xCoords: Coordinates in the x-direction [-1, 1]
@@ -29,7 +29,7 @@ def GetMonomial1d(xCoords, p):
     return values
 
 
-def GetLegendre1d(xCoords, p):
+def Legendre1d(xCoords, p):
     """
     @:brief Get modal Legendre polynomials in one-dimension
     :param xCoords: Coordinates in the x-direction [-1, 1]
@@ -40,18 +40,18 @@ def GetLegendre1d(xCoords, p):
     legendre = np.polynomial.legendre.Legendre
     # Initialise end result: basis values
     values = np.zeros((xCoords.shape[0], p + 1))
-    # values[:, :] = 0.0
     xCoords.shape = -1
 
     for i in range(p + 1):
         values[:, i] = legendre.basis(i)(xCoords)
+        # values[:, i] *= np.sqrt(i + 0.5)
 
     xCoords.shape = -1, 1
 
     return values
 
 
-def GetLegendre1dGrad(xCoords, p):
+def Legendre1dGrad(xCoords, p):
     """
     @:brief Get modal Legendre polynomial derivatives in one-dimension
     :param xCoords: Coordinates in the x-direction [-1, 1]
@@ -67,13 +67,14 @@ def GetLegendre1dGrad(xCoords, p):
     for i in range(p + 1):
         derivative = legendre.basis(i).deriv(1)
         gradients[:, i, 0] = derivative(xCoords)
+        # gradients[:, i, 0] *= np.sqrt(i + 0.5)
 
     xCoords.shape = -1, 1
 
     return gradients
 
 
-def GetLagrange1d(xCoords, nodeCoords):
+def Lagrange1d(xCoords, nodeCoords):
     """
     @:brief Get nodal Lagrange polynomials in one-dimension
     :param xCoords:     Coordinates in the x-direction [-1, 1]
@@ -83,7 +84,6 @@ def GetLagrange1d(xCoords, nodeCoords):
     nNodes = nodeCoords.shape[0]
     temp = np.ones(nNodes, bool)
     values = np.ones((xCoords.shape[0], nNodes))
-    # values[:] = 1.0
     xCoords.shape = -1, 1
 
     # Loop through number of nodes and evaluate basis values for each polynomial
@@ -104,7 +104,7 @@ def GetLagrange1d(xCoords, nodeCoords):
     return values
 
 
-def GetLegendre2d(coords, p, q):
+def Legendre2d(coords, p, q):
     """
     @:brief Get modal Legendre polynomials in two-dimensions using tensor products
     :param coords: x and y-coordinates in the [-1, 1]x[-1, 1] domain
@@ -116,8 +116,8 @@ def GetLegendre2d(coords, p, q):
     # Initialise end result: tensor base values
     values = np.zeros((nPoints, (p + 1) * (q + 1)))
     # Get one-dimensional polynomial values first in both x and y-directions
-    valuex = GetLegendre1d(coords[:, 0], p)
-    valuey = GetLegendre1d(coords[:, 1], q)
+    valuex = Legendre1d(coords[:, 0], p)
+    valuey = Legendre1d(coords[:, 1], q)
 
     for i in range(nPoints):
         # Tensor product
@@ -127,7 +127,7 @@ def GetLegendre2d(coords, p, q):
     return values
 
 
-def GetLegendre2dGrad(coords, p, q):
+def Legendre2dGrad(coords, p, q):
     """
     @:brief Get modal Legendre polynomial derivatives in two-dimensions using tensor products
     :param coords: x and y-coordinates in the [-1, 1]x[-1, 1] domain
@@ -138,11 +138,11 @@ def GetLegendre2dGrad(coords, p, q):
     nPoints = coords.shape[0]
     # Initialise end result: tensor base gradients
     gradients = np.zeros((nPoints, (p + 1) * (q + 1), 2))
-    # Get two-dimensional polynomial derivatives first in both x and y-directions
-    valuex = GetLegendre1d(coords[:, 0], p)
-    valuey = GetLegendre1d(coords[:, 1], q)
-    gradientx = GetLegendre1dGrad(coords[:, 0], p)
-    gradienty = GetLegendre1dGrad(coords[:, 1], q)
+    # Get one-dimensional polynomial derivatives first in both x and y-directions
+    valuex = Legendre1d(coords[:, 0], p)
+    valuey = Legendre1d(coords[:, 1], q)
+    gradientx = Legendre1dGrad(coords[:, 0], p)
+    gradienty = Legendre1dGrad(coords[:, 1], q)
 
     for i in range(nPoints):
         gradients[i, :, 0] = np.reshape(np.outer(gradientx[i, :, 0], valuey[i, :]), (-1,), 'F')
@@ -151,10 +151,10 @@ def GetLegendre2dGrad(coords, p, q):
     return gradients
 
 
-def GetLagrange2d(coords, xnodes, ynodes):
+def Lagrange2d(coords, xnodes, ynodes):
     """
     @:brief Get nodal Lagrange polynomials in two-dimensions using tensor products
-            (vertex-based shape not supported for complex shapes)
+            (vertex-based shape not supported yet)
     :param coords: Coordinates in the x and y-direction within [-1, 1]x[-1, 1] space
     :param xnodes: Node coordinates in the x-direction
     :param ynodes: Node coordinates in the y-direction
@@ -166,8 +166,8 @@ def GetLagrange2d(coords, xnodes, ynodes):
     values = np.zeros((nPoints, NxNodes * NyNodes))
 
     # Get one-dimensional basis values first
-    valuex = GetLagrange1d(coords[:, 0].reshape(-1, 1), xnodes)
-    valuey = GetLagrange1d(coords[:, 1].reshape(-1, 1), ynodes)
+    valuex = Lagrange1d(coords[:, 0].reshape(-1, 1), xnodes)
+    valuey = Lagrange1d(coords[:, 1].reshape(-1, 1), ynodes)
 
     # Tensor products to get two-dimensional bases values
     for i in range(nPoints):

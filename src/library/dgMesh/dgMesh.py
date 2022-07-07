@@ -30,7 +30,7 @@ class DgMesh:
         """
         def __init__(self):
             self.pointNeighbours = None
-            self.faces = None
+            self.faces = None  # Internal faces
 
     def __init__(self, points, pointlabels, boundary, ndims):
         """
@@ -54,7 +54,7 @@ class DgMesh:
         @:brief Read data from polyMesh directory and create mesh for simulation
         :param ndims:            Number of spatial dimensions
         :param polyMeshLocation: Location of polyMesh directory in machine
-        :return: Returns main constructor with data from methods defined
+        :return: Alternative main constructor with data from methods defined
         """
         print("Creating mesh. \n")
 
@@ -70,7 +70,7 @@ class DgMesh:
         :param p1:               Polynomial order in the x-direction
         :param p2:               Polynomial order in the y-direction
         :param polyMeshLocation: Location of polyMesh directory in machine
-        :return: Return cell IDs and cell objects list in mesh object
+        :return: Return cell IDs and cell objects list for the mesh object
         """
         self.connectivityData.cellLabels, self.connectivityData.cells, self.derivedData.pointNeighbours, \
             self.derivedData.faces = self.readCellsFromPolyMesh(polyMeshLocation, nvars, p1, p2)
@@ -253,8 +253,8 @@ class DgMesh:
                                                           verticesList[i][nextVertex]}.intersection(
                                                          set(facesList[face][0]))) > 1]), None))
 
-                cellsArray[i] = Quad(shapesArray[i], verticesList[i], self.connectivityData.points, neighboursList, p1,
-                                     p2)
+                cellsArray[i] = Quad(shapesArray[i], verticesList[i], self.connectivityData.points, neighboursList,
+                                     nvars, p1, p2)
 
         return ownersArray, cellsArray, pointNeighboursList, facesList
 

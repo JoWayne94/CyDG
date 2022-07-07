@@ -6,53 +6,17 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import LinearLocator
 
 
-def computeDtForBurgers(meshObj, dx, ncells, ncoords, cfl):
-    """
-    @:brief Calculate time-step size for Burgers' equation with CFL constraints
-    :param ncoords:   Number of quadrature points in a cell
-    :param meshObj:   Mesh object to obtain phyiscal scalar values in each cell
-    :param dx:        Mesh size
-    :param ncells:    Number of cells
-    :param cfl:       Courant number
-    :return: Time-step size
-    """
-
-    smax = -1.0e6  # a big negative number
-    for cell in range(ncells):
-        for quadrature in range(ncoords):
-            value = abs(meshObj.connectivityData.cells[cell].solnCell.uPhysical[quadrature][0])
-            if value > smax:
-                smax = value
-
-    return cfl * dx / smax  # make sure dt addition does not exceed final time output
-
-
-def upwind_flux(qleft, qright, v, n):
-    """
-    @:brief Upwind flux of a scalar advection
-    :param qleft:  Left state value
-    :param qright: Right state value
-    :param v:      Constant advection velocity
-    :param n:      Normal vector
-    :return: Upwind flux value
-    """
-    # if qright * n >= 0:
-    #     return 0.5 * qleft * qleft * n
-    # elif qright * n < 0:
-    #     return 0.5 * qright * qright * n
-    # else:
-    #     raise NotImplementedError
-
-    if v * n >= 0:
-        return v * qleft * n
-    elif v * n < 0:
-        return v * qright * n
-    else:
-        raise NotImplementedError
-
-
 def lax_friedrichs_flux(qleft, qright, dx, dt, left_flux, right_flux, n):
     return 0.5 * (dx / dt) * (qleft - qright) + 0.5 * (left_flux + right_flux) * n
+
+
+def sipFlux(p1, mesh, cell, qleft, qright, n):
+
+    eta = p1 ** 2
+    totalFaceLengthToVolRatio = 2 / mesh.connectivityData.cells[cell].calculations.V
+    dqxn = (qleft - qright) * n
+    
+
 
 
 def forwardTransform(meshObj, physicalValues, cell):
@@ -63,31 +27,23 @@ def forwardTransform(meshObj, physicalValues, cell):
                                physicalValues))
 
 
-def linearAdvFlux(speed, q):
-    return speed * q
-
-
-def burgersFlux(speed, q):
-    return 0.5 * q * q
-
-
 if __name__ == '__main__':
     """
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/100x0"
+    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/10x0"
     nDims = 1
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
-    P1 = 3
+    P1 = 0
     P2 = 0
     # Read in the mesh
     mesh = DgMesh.constructFromPolyMeshFolder(name, nDims)
     mesh.constructShapeBasedCells(name, nVars, P1, P2)
 
     """
-    Prototype time-loop with forward Euler time-stepping
+    Prototype backward Euler implicit time-stepping
     """
 
     """ Set test case """
@@ -98,8 +54,8 @@ if __name__ == '__main__':
     """ Number of quadrature points within a single cell """
     nCoords = len(quadCoords)
 
-    """ Numerical flux array [Number of cells in mesh, left and right numerical fluxes, number of variables]"""
-    numericalFluxArray = np.empty((nCells, 2, nVars))
+    """ Diffusive flux array [Number of cells in mesh, left and right numerical fluxes, number of variables]"""
+    diffFluxArray = np.empty((nCells, 2, nVars))
 
     """ Left and right face variable values extrapolated using basis matrices at -1 and 1 in parametric space """
     basisMatrixforF0 = GetLegendre1d(np.array([[-1]]), P1)
