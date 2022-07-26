@@ -1,26 +1,71 @@
 import numpy as np
 import math
+from scipy.sparse.linalg import spsolve
 from src.library.dgMesh.dgMesh import *
 from src.library.paramCells.basis import *
 import matplotlib.pyplot as plt
 from matplotlib.ticker import LinearLocator
 
 
-def lax_friedrichs_flux(qleft, qright, dx, dt, left_flux, right_flux, n):
-    return 0.5 * (dx / dt) * (qleft - qright) + 0.5 * (left_flux + right_flux) * n
+# def difference(u_minus, u_plus, n_minus, n_plus):
+#     return u_minus * n_minus + u_plus * n_plus
+#
+#
+# def difference_boundary(u_minus, n_minus):
+#     return u_minus * n_minus
+#
+#
+# def average(u_minus, u_plus):
+#     return 0.5 * (u_minus + u_plus)
+#
+#
+# def average_boundary(u_minus):
+#     return u_minus
 
 
-def sipFlux(p1, mesh, cell, qleft, qright, n):
+def sipFlux(cell_left, cell_right, bleft, bright, dleft, dright, n):
+    dxi1dx1_left = cell_left.geomCell.geometry.dxi1dx1
+    dxi1dx1_right = cell_right.geomCell.geometry.dxi1dx1
 
-    eta = p1 ** 2
-    totalFaceLengthToVolRatio = 2 / mesh.connectivityData.cells[cell].calculations.V
-    dqxn = (qleft - qright) * n
-    
+    # diff_b = difference(bleft, bright, nleft, nright)
+    # diff_d = difference(dxi1dx1_left * dleft, dxi1dx1_right * dright, nleft, nright)
+    # avg_b = average(bleft, bright)
+    # avg_d = average(dxi1dx1_left * dleft, dxi1dx1_right * dright)
 
+    owner = n * (- 0.5 * np.matmul(bleft.transpose(), (dxi1dx1_left * dleft)[:, :, 0])
+                 - 0.5 * np.matmul((dxi1dx1_left * dleft)[:, :, 0].transpose(), bleft)) \
+            + eta * np.matmul(bleft.transpose(), bleft)
+
+    own_neigh = n * (0.5 * np.matmul(bright.transpose(), (dxi1dx1_left * dleft)[:, :, 0])
+                     - 0.5 * np.matmul((dxi1dx1_right * dright)[:, :, 0].transpose(), bleft)) \
+                - eta * np.matmul(bright.transpose(), bleft)
+
+    neigh_own = n * (- 0.5 * np.matmul(bleft.transpose(), (dxi1dx1_right * dright)[:, :, 0])
+                     + 0.5 * np.matmul((dxi1dx1_left * dleft)[:, :, 0].transpose(), bright)) \
+                - eta * np.matmul(bleft.transpose(), bright)
+
+    neighbour = n * (0.5 * np.matmul(bright.transpose(), (dxi1dx1_right * dright)[:, :, 0])
+                     + 0.5 * np.matmul((dxi1dx1_right * dright)[:, :, 0].transpose(), bright)) \
+                + eta * np.matmul(bright.transpose(), bright)
+
+    return owner, own_neigh, neigh_own, neighbour
+
+
+def sipFluxBoundary(cell_left, bleft, dleft, n):
+    dxi1dx1_left = cell_left.geomCell.geometry.dxi1dx1
+
+    # diff_b = difference_boundary(bleft, nleft)
+    # avg_d = average_boundary(dxi1dx1_left * dleft)
+
+    sip_left = n * (- np.matmul(bleft.transpose(), (dxi1dx1_left * dleft)[:, :, 0])
+                    - np.matmul((dxi1dx1_left * dleft)[:, :, 0].transpose(), bleft)) + \
+               eta * np.matmul(bleft.transpose(), bleft)
+
+    return sip_left
 
 
 def forwardTransform(meshObj, physicalValues, cell):
-    return np.matmul(meshObj.connectivityData.cells[cell].matCell.invMassMatrix,
+    return np.matmul(meshObj.connectivityData.cells[cell].invMassMatrix,
                      np.matmul(meshObj.connectivityData.cells[cell].matCell.basisMatrix.transpose(),
                                meshObj.connectivityData.cells[cell].paramSeg.weights *
                                abs(meshObj.connectivityData.cells[cell].geomCell.detJacobian) *
@@ -32,11 +77,11 @@ if __name__ == '__main__':
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/10x0"
+    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/3x0"
     nDims = 1
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
-    P1 = 0
+    P1 = 3
     P2 = 0
     # Read in the mesh
     mesh = DgMesh.constructFromPolyMeshFolder(name, nDims)
@@ -54,79 +99,39 @@ if __name__ == '__main__':
     """ Number of quadrature points within a single cell """
     nCoords = len(quadCoords)
 
-    """ Diffusive flux array [Number of cells in mesh, left and right numerical fluxes, number of variables]"""
-    diffFluxArray = np.empty((nCells, 2, nVars))
+    """ Cellular Laplacian matrix """
+    laplacian = np.zeros((nCells, nCells, P1 + 1, P1 + 1))
+
+    """ Cellular SIP matrix [P1 + 1, P1 + 1] """
+    sipMatrices = np.zeros_like(laplacian)
 
     """ Left and right face variable values extrapolated using basis matrices at -1 and 1 in parametric space """
-    basisMatrixforF0 = GetLegendre1d(np.array([[-1]]), P1)
-    basisMatrixforF1 = GetLegendre1d(np.array([[1]]), P1)
-    leftFaceValueArray = np.empty((nCells, nVars))
-    rightFaceValueArray = np.empty((nCells, nVars))
+    basisMatrixforF0 = Legendre1d(np.array([[-1]]), P1)
+    basisMatrixforF1 = Legendre1d(np.array([[1]]), P1)
+    derivMatrixforF0 = Legendre1dGrad(np.array([[-1]]), P1)
+    derivMatrixforF1 = Legendre1dGrad(np.array([[1]]), P1)
 
     """
     Set initial values using the first coefficients for constant state, or using physical values then 
     transform back to coefficient space
     """
-    test_case = "step"
-    a = 1.0  # constant velocity
-    numerical_flux = upwind_flux
+    test_case = "steady_poisson"
+    numerical_flux = sipFlux
 
-    if test_case == "sine":
-        endTime = 0.0
-        flux = linearAdvFlux
-        boundaryConditions = "Periodic"
+    if test_case == "steady_poisson":
+        boundaryConditions = "Dirichlet"
+        u_l = 5
+        u_r = 17
+        forcing = 0  # -Laplace(u) = forcing
 
-        for i in range(nCells):
-            # Initial condition for sine wave
-            for coords in range(nCoords):
-                mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
-                    np.sin(2 * np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coords])
-
-            mesh.connectivityData.cells[i].solnCell.uCoeffs = \
-                forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
-
-    elif test_case == "step":
-        uL = 0.0
-        uR = 1.0
-        xL = 0.25
-        xR = 0.75
-        endTime = 1.0
-        flux = linearAdvFlux
-        boundaryConditions = "Periodic"
-
-        for i in range(nCells):
-            # Initial condition for step function
-            mesh.connectivityData.cells[i].solnCell.uCoeffs[0] = np.array(
-                [uR if xL <= coords <= xR else uL for coords in mesh.connectivityData.cells[i].calculations.cellCentre])
-            # Set physical values, no need * abs(mesh.connectivityData.cells[i].geomCell.detJacobian)
-            mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
-                mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
-
-    elif test_case == "burgers_step":
-        endTime = 0.001
-        flux = burgersFlux
-        boundaryConditions = "Neumann"
-
-        for i in range(nCells):
-            # Initial condition for Burgers' equation
-            mesh.connectivityData.cells[i].solnCell.uCoeffs[0] = np.array(
-                [2 if coords < 0.5 else 1 for coords in mesh.connectivityData.cells[i].calculations.cellCentre])
-            mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
-                mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
-
-    elif test_case == "burgers_sine":
-        endTime = 1.0
-        flux = burgersFlux
-        boundaryConditions = "Periodic"
-
-        for i in range(nCells):
-            for coords in range(nCoords):
-                mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
-                    0.5 + 0.5 * np.sin(np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coords])
-
-            mesh.connectivityData.cells[i].solnCell.uCoeffs = \
-                forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
-
+        # for i in range(nCells):
+        #     # Initial condition for sine wave
+        #     for coords in range(nCoords):
+        #         mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
+        #             np.sin(2 * np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coords])
+        #
+        #     mesh.connectivityData.cells[i].solnCell.uCoeffs = \
+        #         forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
     else:
         raise NotImplementedError
 
@@ -138,180 +143,126 @@ if __name__ == '__main__':
     # for i in range(nCells):
     #     print(mesh.connectivityData.cells[i].solnCell.uPhysical)
 
-    CFL = 0.003
-    # CFL = 1 / (2 * P1 + 1)
     deltaT = 0.0
     # Constant mesh size for now
-    deltax = mesh.connectivityData.cells[0].calculations.V
+    deltax = mesh.connectivityData.cells[1].calculations.V
 
-    """ Start time-loop """
-    while endTime - time > 1e-10:
-        """ Populate the faces values """
-        for i in range(nCells):
-            leftFaceValueArray[i] = np.matmul(basisMatrixforF0, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
-            rightFaceValueArray[i] = np.matmul(basisMatrixforF1, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
+    fCoeffsGlobal = np.zeros((nCells, P1 + 1))
+    eta = (P1 ** 2) * (1.0 / deltax)
 
-        """ Calculate time-step size """
-        if flux == burgersFlux:
-            deltaT = computeDtForBurgers(mesh, deltax, nCells, nCoords, CFL)
-            # deltaT = CFL * deltax / a
-        elif flux == linearAdvFlux:
-            deltaT = CFL * deltax / a
-        else:
-            raise NotImplementedError
+    """ Domain boundaries """
+    laplacian[0][0] = mesh.connectivityData.cells[0].laplacianMatrix
 
-        # Increment time
-        if time + deltaT > endTime:
-            deltaT = endTime - time
-        time += deltaT
-        print("Current time: " + str(time))
+    sipMatrices[0][0] = \
+        sipFluxBoundary(mesh.connectivityData.cells[0], basisMatrixforF0, derivMatrixforF0,
+                        mesh.connectivityData.cells[0].calculations.faceNormals[0])
 
-        if boundaryConditions == "Periodic":
-            if numerical_flux == upwind_flux:
-                """ Set periodic boundary conditions, i.e., copy end cell values to the other end """
-                numericalFluxArray[0][0] = upwind_flux(leftFaceValueArray[0], rightFaceValueArray[-1], a,
-                                                       mesh.connectivityData.cells[0].calculations.faceNormals[0])
-                numericalFluxArray[0][1] = upwind_flux(rightFaceValueArray[0], leftFaceValueArray[1], a,
-                                                       mesh.connectivityData.cells[0].calculations.faceNormals[1])
-                numericalFluxArray[-1][0] = upwind_flux(leftFaceValueArray[-1], rightFaceValueArray[-2], a,
-                                                        mesh.connectivityData.cells[0].calculations.faceNormals[0])
-                numericalFluxArray[-1][1] = upwind_flux(rightFaceValueArray[-1], leftFaceValueArray[0], a,
-                                                        mesh.connectivityData.cells[0].calculations.faceNormals[1])
-            elif numerical_flux == lax_friedrichs_flux:
-                """ Set Periodic boundary conditions, Lax Friedrichs flux """
-                numericalFluxArray[0][0] = lax_friedrichs_flux(leftFaceValueArray[0], rightFaceValueArray[-1], deltax,
-                                                               deltaT,
-                                                               flux(a, leftFaceValueArray[0]),
-                                                               flux(a, rightFaceValueArray[-1]),
-                                                               mesh.connectivityData.cells[0].calculations.faceNormals[
-                                                                   0])
-                numericalFluxArray[0][1] = lax_friedrichs_flux(rightFaceValueArray[0], leftFaceValueArray[1], deltax,
-                                                               deltaT,
-                                                               flux(a, rightFaceValueArray[0]),
-                                                               flux(a, leftFaceValueArray[1]),
-                                                               mesh.connectivityData.cells[0].calculations.faceNormals[
-                                                                   1])
-                numericalFluxArray[-1][0] = lax_friedrichs_flux(leftFaceValueArray[-1], rightFaceValueArray[-2], deltax,
-                                                                deltaT,
-                                                                flux(a, leftFaceValueArray[-1]),
-                                                                flux(a, rightFaceValueArray[-2]),
-                                                                mesh.connectivityData.cells[-1].calculations.faceNormals[
-                                                                    0])
-                numericalFluxArray[-1][1] = lax_friedrichs_flux(rightFaceValueArray[-1], leftFaceValueArray[0], deltax,
-                                                                deltaT,
-                                                                flux(a, rightFaceValueArray[-1]),
-                                                                flux(a, leftFaceValueArray[0]),
-                                                                mesh.connectivityData.cells[-1].calculations.faceNormals[
-                                                                    1])
-            else:
-                raise NotImplementedError
+    temp1, temp2, temp3, temp4 = \
+        sipFlux(mesh.connectivityData.cells[0], mesh.connectivityData.cells[1],
+                basisMatrixforF1, basisMatrixforF0, derivMatrixforF1, derivMatrixforF0,
+                mesh.connectivityData.cells[0].calculations.faceNormals[1])
 
-        elif boundaryConditions == "Neumann":
-            """ Set Neumann boundary conditions, Lax Friedrichs flux """
-            numericalFluxArray[0][0] = lax_friedrichs_flux(leftFaceValueArray[0], leftFaceValueArray[0], deltax,
-                                                           deltaT,
-                                                           flux(a, leftFaceValueArray[0]),
-                                                           flux(a, leftFaceValueArray[0]),
-                                                           mesh.connectivityData.cells[0].calculations.faceNormals[0]
-                                                           )
-            numericalFluxArray[0][1] = lax_friedrichs_flux(rightFaceValueArray[0], leftFaceValueArray[1], deltax,
-                                                           deltaT,
-                                                           flux(a, rightFaceValueArray[0]),
-                                                           flux(a, leftFaceValueArray[1]),
-                                                           mesh.connectivityData.cells[0].calculations.faceNormals[1]
-                                                           )
-            numericalFluxArray[-1][0] = lax_friedrichs_flux(leftFaceValueArray[-1], rightFaceValueArray[-2], deltax,
-                                                            deltaT,
-                                                            flux(a, leftFaceValueArray[-1]),
-                                                            flux(a, rightFaceValueArray[-2]),
-                                                            mesh.connectivityData.cells[-1].calculations.faceNormals[0]
-                                                            )
-            numericalFluxArray[-1][1] = lax_friedrichs_flux(rightFaceValueArray[-1], rightFaceValueArray[-1], deltax,
-                                                            deltaT,
-                                                            flux(a, rightFaceValueArray[-1]),
-                                                            flux(a, rightFaceValueArray[-1]),
-                                                            mesh.connectivityData.cells[-1].calculations.faceNormals[1]
-                                                            )
-        else:
-            raise NotImplementedError
+    sipMatrices[0][0] += temp1
+    sipMatrices[0][1] += temp2
+    sipMatrices[1][0] += temp3
+    sipMatrices[1][1] += temp4
+    fCoeffsGlobal[0] = - u_l * mesh.connectivityData.cells[0].calculations.faceNormals[0] * \
+                       mesh.connectivityData.cells[0].geomCell.geometry.dxi1dx1 * derivMatrixforF0[:, :, 0] + \
+                       eta * u_l * basisMatrixforF0
 
-        """ Calculate numerical fluxes for internal faces """
-        if numerical_flux == upwind_flux:
-            for i in range(nCells - 2):
-                numericalFluxArray[i + 1][0] = upwind_flux(leftFaceValueArray[i + 1], rightFaceValueArray[i], a,
-                                                           mesh.connectivityData.cells[0].calculations.faceNormals[0])
-                numericalFluxArray[i + 1][1] = upwind_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2], a,
-                                                           mesh.connectivityData.cells[0].calculations.faceNormals[1])
-        elif numerical_flux == lax_friedrichs_flux:
-            # qleft is always on the left side of a face instead
-            for i in range(nCells - 2):
-                numericalFluxArray[i + 1][0] = lax_friedrichs_flux(leftFaceValueArray[i + 1], rightFaceValueArray[i],
-                                                                   deltax, deltaT, flux(a, leftFaceValueArray[i + 1]),
-                                                                   flux(a, rightFaceValueArray[i]),
-                                                                   mesh.connectivityData.cells[
-                                                                       i + 1].calculations.faceNormals[0])
-                numericalFluxArray[i + 1][1] = lax_friedrichs_flux(rightFaceValueArray[i + 1],
-                                                                   leftFaceValueArray[i + 2],
-                                                                   deltax, deltaT, flux(a, rightFaceValueArray[i + 1]),
-                                                                   flux(a, leftFaceValueArray[i + 2]),
-                                                                   mesh.connectivityData.cells[
-                                                                        i + 1].calculations.faceNormals[1])
-        else:
-            raise NotImplementedError
+    laplacian[-1][-1] = mesh.connectivityData.cells[-1].laplacianMatrix
 
-        """ Initialise divergence of flux and new solution coefficients """
-        uCoeffsNew = np.zeros((nCells, P1 + 1, nVars))
+    sipMatrices[-1][-1] = \
+        sipFluxBoundary(mesh.connectivityData.cells[-1], basisMatrixforF1, derivMatrixforF1,
+                        mesh.connectivityData.cells[-1].calculations.faceNormals[1])
 
-        """ Go through all cells """
-        for i in range(nCells):
-            """ Backward transformation from coefficient space to physical space """
-            mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
-                mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
-            """ Flux values at quadrature points in the cell """
-            fluxValues = np.array([flux(a, q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
-            """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
-            fluxCoeffs = forwardTransform(mesh, fluxValues, i)
-            # f0Coeffs = np.matmul(np.linalg.inv(mesh.connectivityData.cells[i].GetMassMatrix()),
-            #                      np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix.transpose(),
-            #                                mesh.connectivityData.cells[i].paramSeg.weights *
-            #                                abs(mesh.connectivityData.cells[i].geomCell.detJacobian) *
-            #                                numericalFluxArray[i][0].reshape(-1, 1).transpose()))
-            # f1Coeffs = np.matmul(np.linalg.inv(mesh.connectivityData.cells[i].GetMassMatrix()),
-            #                      np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix.transpose(),
-            #                                mesh.connectivityData.cells[i].paramSeg.weights *
-            #                                abs(mesh.connectivityData.cells[i].geomCell.detJacobian) *
-            #                                numericalFluxArray[i][1].reshape(-1, 1).transpose()))
-            # divFlux = np.matmul(np.linalg.inv(mesh.connectivityData.cells[i].GetMassMatrix()),
-            #                     (np.matmul(massMatrixforF0, f0Coeffs) +
-            #                      np.matmul(massMatrixforF1, f1Coeffs) -
-            #                      np.matmul(mesh.connectivityData.cells[i].GetStiffnessMatrix(), fluxCoeffs)))
-            divFlux = np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
-                                (np.matmul(basisMatrixforF0.transpose(),
-                                           numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
-                                 np.matmul(basisMatrixforF1.transpose(),
-                                           numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
-                                 np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, fluxCoeffs)))
-            uCoeffsNew[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs - deltaT * divFlux
+    # temp1, temp2, temp3, temp4 = \
+    #     sipFlux(mesh.connectivityData.cells[-1], mesh.connectivityData.cells[-2],
+    #             basisMatrixforF0, basisMatrixforF1, derivMatrixforF0, derivMatrixforF1,
+    #             mesh.connectivityData.cells[-1].calculations.faceNormals[0])
+    # sipMatrices[-1][-1] += temp1
+    # sipMatrices[-1][-2] += temp2
+    # sipMatrices[-2][-1] += temp3
+    # sipMatrices[-2][-2] += temp4
 
-        for i in range(nCells):
-            mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
+    fCoeffsGlobal[-1] = - u_r * mesh.connectivityData.cells[-1].calculations.faceNormals[1] * \
+                        mesh.connectivityData.cells[-1].geomCell.geometry.dxi1dx1 * derivMatrixforF1[:, :, 0] + \
+                        eta * u_r * basisMatrixforF1
+
+    """ Populate internal values """
+    for i in range(nCells - 2):
+        laplacian[i + 1][i + 1] = mesh.connectivityData.cells[i + 1].laplacianMatrix
+
+        # temp1, temp2, temp3, temp4 = \
+        #     sipFlux(mesh.connectivityData.cells[i + 1], mesh.connectivityData.cells[i],
+        #             basisMatrixforF0, basisMatrixforF1, derivMatrixforF0, derivMatrixforF1,
+        #             mesh.connectivityData.cells[i + 1].calculations.faceNormals[0])
+        # sipMatrices[i + 1][i + 1] += temp1
+        # sipMatrices[i + 1][i] += temp2
+        # sipMatrices[i][i + 1] += temp3
+        # sipMatrices[i][i] += temp4
+
+        temp1, temp2, temp3, temp4 = \
+            sipFlux(mesh.connectivityData.cells[i + 1], mesh.connectivityData.cells[i + 2],
+                    basisMatrixforF1, basisMatrixforF0, derivMatrixforF1, derivMatrixforF0,
+                    mesh.connectivityData.cells[i + 1].calculations.faceNormals[1])
+        sipMatrices[i + 1][i + 1] += temp1
+        sipMatrices[i + 1][i + 2] += temp2
+        sipMatrices[i + 2][i + 1] += temp3
+        sipMatrices[i + 2][i + 2] += temp4
+
+    for i in range(nCells):
+        tempf = forcing * np.ones((nCoords, nVars))
+        # forwardTransform(mesh, tempf, i)
+        # print(mesh.connectivityData.cells[i].paramSeg.weights * abs(mesh.connectivityData.cells[i].geomCell.detJacobian))
+        # print(np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix.transpose(),
+        #                 mesh.connectivityData.cells[i].paramSeg.weights * \
+        #                 abs(mesh.connectivityData.cells[i].geomCell.detJacobian)))
+        fCoeffsGlobal[i] += np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix.transpose(),
+                                      tempf * \
+                                      mesh.connectivityData.cells[i].paramSeg.weights * \
+                                      abs(mesh.connectivityData.cells[i].geomCell.detJacobian)).reshape(-1)
+
+        # fCoeffsGlobal[i] += (forwardTransform(mesh, tempf, i)).reshape(-1)
+
+    """ Global block-matrix """
+    A = laplacian + sipMatrices
+    """ Row runs first then column !! """
+    A = np.block([
+        [A[j][i] for j in range(nCells)] for i in range(nCells)
+    ])
+    f = np.block([
+        [fCoeffsGlobal[i]] for i in range(nCells)
+    ])
+    np.set_printoptions(precision=1, suppress=True)
+    print(A)
+    # print(np.linalg.inv(A))
+    # f[0][2] = 0.
+    # f[0][1] = 0.
+    print(f.reshape(-1, 1))
+
+    uCoeffsGlobal = np.matmul(np.linalg.inv(A), f.reshape(-1, 1))
+    # uCoeffsGlobal = spsolve(A, f.reshape(-1, 1))
+    # ones = np.ones_like(A)
+    # A = np.divide(ones, A, out=np.zeros_like(ones), where=A != 0)
+    # uCoeffsGlobal = np.matmul(A, f.reshape(-1, 1))
+    print(uCoeffsGlobal)
 
     pltPhysical = np.zeros((nCells, nCoords, nVars))
     for i in range(nCells):
         pltPhysical[i] = np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix,
-                                   mesh.connectivityData.cells[i].solnCell.uCoeffs)
+                                   uCoeffsGlobal.reshape(nCells, P1 + 1)[i].reshape(-1, 1))
 
-    # print(pltPhysical[:, :, 0].reshape(-1))
     pltCoords = np.array([mesh.connectivityData.cells[i].GetQuadratureCoords for i in range(nCells)]).reshape(-1)
-    plt.plot(pltCoords, pltPhysical[:, :, 0].reshape(-1))
-    # plt.rc('axes', linewidth=1.25)
-    # plt.xticks([-1, 0, 1])
-    # plt.tick_params(axis='x', direction='in', pad=5)
-    # plt.yticks([-1, 0, 1])
-    # plt.tick_params(axis='y', direction='in', pad=5)
+    plt.plot(pltCoords, pltPhysical[:, :, 0].reshape(-1), linestyle="", marker="o", color="blue")
+    # plt.plot([0.0, 2.0],
+    #          np.array([np.matmul(basisMatrixforF0, uCoeffsGlobal.reshape(2, 2)[0].reshape(-1, 1)),
+    #                    np.matmul(basisMatrixforF1, uCoeffsGlobal.reshape(2, 2)[1].reshape(-1, 1))])[:, :,
+    #          0].reshape(-1),
+    #          linestyle="", marker="o", color="blue")
     plt.grid()
-    plt_name = test_case + "_" + "P" + str(P1) + "_" + str(endTime) + '.png'
-    plt.savefig(plt_name, dpi=100)
-    np.savetxt(plt_name + "_coords.dat", pltCoords, delimiter=',')
-    np.savetxt(plt_name + "_values.dat", pltPhysical[:, :, 0].reshape(-1), delimiter=',')
+    # plt_name = test_case + "_" + "P" + str(P1) + "_" + str(endTime) + '.png'
+    # plt.savefig(plt_name, dpi=100)
+    # np.savetxt(plt_name + "_coords.dat", pltCoords, delimiter=',')
+    # np.savetxt(plt_name + "_values.dat", pltPhysical[:, :, 0].reshape(-1), delimiter=',')
     plt.show()

@@ -14,6 +14,7 @@ class Geometry(ABC):
         """
         @:brief Main constructor
         """
+        pass
 
     @abstractmethod
     def parametricMapping(self):

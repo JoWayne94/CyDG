@@ -1,3 +1,8 @@
+"""
+File: Euler.py
+
+Description: Solve Euler equations in 1D
+"""
 import numpy as np
 import math
 from src.library.dgMesh.dgMesh import *
@@ -58,10 +63,10 @@ def eulerFlux(u):
     """
     F = np.empty(3)
     w = conservativeToPrimitive(u)
-    rho = abs(w[0])
+    rho = w[0]  # abs(w[0])
     vx = w[1]
-    pressure = abs(w[2])
-    E = abs(u[2])
+    pressure = w[2]  # abs(w[2])
+    E = u[2]  # abs(u[2])
 
     F[0] = rho * vx
     F[1] = rho * vx * vx + pressure
@@ -78,11 +83,8 @@ def computeSoundSpeed(rho, pressure):
     :return: Sound speed
     """
     # Ideal Gas EoS
-    # if pressure <= 0:
-    #     print("Pressure negative")
-    # if rho <= 0:
-    #     print("Density negative")
-    a = math.sqrt(abs(1.4 * pressure / rho))
+    # a = math.sqrt(abs(1.4 * pressure / rho))
+    a = math.sqrt(1.4 * pressure / rho)
 
     return a
 
@@ -97,12 +99,19 @@ def waveEstimates(ul, ur):
     wl = conservativeToPrimitive(ul)
     wr = conservativeToPrimitive(ur)
 
-    rhol = abs(wl[0])
-    rhor = abs(wr[0])
+    # rhol = abs(wl[0])
+    # rhor = abs(wr[0])
+    # vxl = wl[1]
+    # vxr = wr[1]
+    # pressurel = abs(wl[2])
+    # pressurer = abs(wr[2])
+
+    rhol = wl[0]
+    rhor = wr[0]
     vxl = wl[1]
     vxr = wr[1]
-    pressurel = abs(wl[2])
-    pressurer = abs(wr[2])
+    pressurel = wl[2]
+    pressurer = wr[2]
 
     # Ideal Gas EoS
     al = computeSoundSpeed(rhol, pressurel)
@@ -174,7 +183,7 @@ def computeDt(leftfacearray, rightfacearray, dx, ncells, cfl):
 
         smax = max(smax, max(abs(sleft), abs(sright)))  # eq (6.19)
 
-    return cfl * deltax / smax  # // eq (6.17), make sure dt addition does not exceed final time output
+    return cfl * dx / smax  # // eq (6.17), make sure dt addition does not exceed final time output
 
 
 def HLLFlux(qleft, qright):
@@ -196,8 +205,6 @@ def HLLFlux(qleft, qright):
 
 
 def HLLCFlux(qleft, qright):
-    Sl, Sr, Sstar, pLR = 0.0, 0.0, 0.0, 0.0
-
     wl = conservativeToPrimitive(qleft)
     wr = conservativeToPrimitive(qright)
 
@@ -259,14 +266,14 @@ def RoeSolver(qleft, qright):
     Fl = eulerFlux(qleft)
     Fr = eulerFlux(qright)
 
-    rhol = abs(wl[0])
-    rhor = abs(wr[0])
+    rhol = wl[0]
+    rhor = wr[0]
     vxl = wl[1]
     vxr = wr[1]
-    pressurel = abs(wl[2])
-    pressurer = abs(wr[2])
-    El = abs(qleft[2])
-    Er = abs(qright[2])
+    pressurel = wl[2]
+    pressurer = wr[2]
+    El = qleft[2]
+    Er = qright[2]
 
     """ Roe averaged state """
     rhol_sqrt = math.sqrt(rhol)
@@ -275,13 +282,10 @@ def RoeSolver(qleft, qright):
     Hl = (El + pressurel) / rhol
     Hr = (Er + pressurer) / rhor
 
-    # cl = computeSoundSpeed(rhol, pressurel)
-    # cr = computeSoundSpeed(rhor, pressurer)
-
     vRoe = (rhol_sqrt * vxl + rhor_sqrt * vxr) / (rhol_sqrt + rhor_sqrt)
     HRoe = (rhol_sqrt * Hl + rhor_sqrt * Hr) / (rhol_sqrt + rhor_sqrt)
     rhoRoe = rhol_sqrt * rhor_sqrt
-    c2Roe = abs((1.4 - 1) * (HRoe - 0.5 * vRoe * vRoe))
+    c2Roe = (1.4 - 1) * (HRoe - 0.5 * vRoe * vRoe)
     cRoe = math.sqrt(c2Roe)
 
     drho = rhor - rhol
@@ -312,12 +316,96 @@ def RoeSolver(qleft, qright):
     return 0.5 * (Fl + Fr - FRoe)
 
 
+def RoeMatrix(qleft, qright):
+
+    wl = conservativeToPrimitive(qleft)
+    wr = conservativeToPrimitive(qright)
+
+    rhol = wl[0]
+    rhor = wr[0]
+    vxl = wl[1]
+    vxr = wr[1]
+    pressurel = wl[2]
+    pressurer = wr[2]
+    El = qleft[2]
+    Er = qright[2]
+
+    """ Roe averaged state """
+    rhol_sqrt = math.sqrt(rhol)
+    rhor_sqrt = math.sqrt(rhor)
+    """ Total specific enthalpy """
+    Hl = (El + pressurel) / rhol
+    Hr = (Er + pressurer) / rhor
+
+    vRoe = (rhol_sqrt * vxl + rhor_sqrt * vxr) / (rhol_sqrt + rhor_sqrt)
+    HRoe = (rhol_sqrt * Hl + rhor_sqrt * Hr) / (rhol_sqrt + rhor_sqrt)
+    c2Roe = (1.4 - 1) * (HRoe - 0.5 * vRoe * vRoe)
+    cRoe = math.sqrt(c2Roe)
+
+    Lambda = np.empty(3)
+    Lambda[0] = vRoe - cRoe
+    Lambda[1] = vRoe
+    Lambda[2] = vRoe + cRoe
+
+    R = np.empty((3, 3))
+    R[0, :] = 1.0
+    R[1, 0] = Lambda[0]
+    R[1, 1] = Lambda[1]
+    R[1, 2] = Lambda[2]
+    R[2, 0] = HRoe - vRoe * cRoe
+    R[2, 1] = 0.5 * vRoe * vRoe
+    R[2, 2] = HRoe + vRoe * cRoe
+
+    return np.linalg.inv(R), R
+
+
 def forwardTransform(meshObj, physicalValues, cell):
-    return np.matmul(meshObj.connectivityData.cells[cell].matCell.invMassMatrix,
+    return np.matmul(meshObj.connectivityData.cells[cell].invMassMatrix,
                      np.matmul(meshObj.connectivityData.cells[cell].matCell.basisMatrix.transpose(),
                                meshObj.connectivityData.cells[cell].paramSeg.weights *
                                abs(meshObj.connectivityData.cells[cell].geomCell.detJacobian) *
                                physicalValues))
+
+
+def minmod(prev, current, next):
+
+    temp_cell = np.empty((P1 + 1, nVars))
+
+    # if var == 2:
+    #     store = current[0][var]
+    #     temp_cell[:, var] = 0.0
+    #     temp_cell[0][var] = store
+    #
+    # else:
+
+    for var in range(nVars):
+        p_counter = P1
+        for p in range(P1, 0, -1):
+            coeff_tilde = 0
+            temp_a = current[p][var]
+            temp_b = (next[p - 1][var] - current[p - 1][var]) / (2 * (2 * p - 1))
+            temp_c = (current[p - 1][var] - prev[p - 1][var]) / (2 * (2 * p - 1))
+
+            # if var == 2:
+            #     temp_b = (next[p - 1][var] - current[p - 1][var]) / (2 * (2 * p - 1))
+            #     temp_c = (current[p - 1][var] - prev[p - 1][var]) / (2 * (2 * p - 1))
+            # else:
+            #     temp_b = next[p - 1][var] - current[p - 1][var]
+            #     temp_c = current[p - 1][var] - prev[p - 1][var]
+
+            if np.sign(temp_a) == np.sign(temp_b) and np.sign(temp_b) == np.sign(temp_c):
+                coeff_tilde = np.sign(temp_a) * min(abs(temp_a), min(abs(temp_b), abs(temp_c)))
+
+            if abs(temp_a - coeff_tilde) < 1.0e-6:
+                break
+            else:
+                temp_cell[p][var] = coeff_tilde
+                p_counter -= 1
+
+        for remaining in range(p_counter, -1, -1):
+            temp_cell[remaining][var] = current[remaining][var]
+
+    return temp_cell
 
 
 if __name__ == '__main__':
@@ -351,13 +439,13 @@ if __name__ == '__main__':
     numericalFluxArray = np.empty((nCells, 2, nVars))
 
     """ Left and right face variable values extrapolated using basis matrices at -1 and 1 in parametric space """
-    basisMatrixforF0 = GetLegendre1d(np.array([[-1]]), P1)
-    basisMatrixforF1 = GetLegendre1d(np.array([[1]]), P1)
+    basisMatrixforF0 = Legendre1d(np.array([[-1]]), P1)
+    basisMatrixforF1 = Legendre1d(np.array([[1]]), P1)
     leftFaceValueArray = np.empty((nCells, nVars))
     rightFaceValueArray = np.empty((nCells, nVars))
 
     test_case = "Toro1aa"
-    numerical_flux = HLLCFlux
+    numerical_flux = RoeSolver
 
     if test_case == "Toro1a":
         rhoL = 1.0
@@ -431,7 +519,7 @@ if __name__ == '__main__':
         mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix
                                                                       , mesh.connectivityData.cells[i].solnCell.uCoeffs)
 
-    CFL = 0.001
+    CFL = 0.9
     # CFL = 1 / (2 * P1 + 1)
     deltaT = 0.0
     # Constant mesh size for now
@@ -442,71 +530,43 @@ if __name__ == '__main__':
     """ For TVD Runge Kutta, first and second stage """
     uCoeffs1 = np.zeros_like(uCoeffsNew)
     uCoeffs2 = np.zeros_like(uCoeffsNew)
+    iteration = 0
 
     """ Start time-loop, forward Euler """
-    # while endTime - time > 1e-10:
-    #     """ Populate the faces values """
-    #     for i in range(nCells):
-    #         leftFaceValueArray[i] = np.matmul(basisMatrixforF0, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
-    #         rightFaceValueArray[i] = np.matmul(basisMatrixforF1, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
-    #
-    #     """ Calculate time-step size """
-    #     deltaT = computeDt(leftFaceValueArray, rightFaceValueArray, deltax, nCells, CFL)
-    #
-    #     # Increment time
-    #     if time + deltaT > endTime:
-    #         deltaT = endTime - time
-    #     time += deltaT
-    #     print("Current time: " + str(time))
-    #
-    #     """ Set Neumann boundary conditions, i.e., copy end cell values """
-    #     numericalFluxArray[0][0] = numerical_flux(leftFaceValueArray[0], leftFaceValueArray[0]) * \
-    #                                mesh.connectivityData.cells[0].calculations.faceNormals[0]
-    #     numericalFluxArray[0][1] = numerical_flux(rightFaceValueArray[0], leftFaceValueArray[1]) * \
-    #                                mesh.connectivityData.cells[0].calculations.faceNormals[1]
-    #     numericalFluxArray[-1][0] = numerical_flux(rightFaceValueArray[-2], leftFaceValueArray[-1]) * \
-    #                                 mesh.connectivityData.cells[-1].calculations.faceNormals[0]
-    #     numericalFluxArray[-1][1] = numerical_flux(rightFaceValueArray[-1], rightFaceValueArray[-1]) * \
-    #                                 mesh.connectivityData.cells[-1].calculations.faceNormals[1]
-    #
-    #     # print(numericalFluxArray)
-    #     """ Calculate numerical fluxes for internal faces """
-    #     for i in range(nCells - 2):
-    #         numericalFluxArray[i + 1][0] = numerical_flux(rightFaceValueArray[i], leftFaceValueArray[i + 1]) \
-    #                                        * mesh.connectivityData.cells[i + 1].calculations.faceNormals[0]
-    #         numericalFluxArray[i + 1][1] = numerical_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2]) \
-    #                                        * mesh.connectivityData.cells[i + 1].calculations.faceNormals[1]
-    #
-    #     """ Go through all cells """
-    #     for i in range(nCells):
-    #         """ Backward transformation from coefficient space to physical space """
-    #         mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
-    #             mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
-    #         """ Euler flux values at quadrature points in the cell """
-    #         eulerFluxValues = np.array([eulerFlux(q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
-    #         """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
-    #         eulerFluxCoeffs = forwardTransform(mesh, eulerFluxValues, i)
-    #
-    #         """ Test discrete Galerkin projection operation """
-    #         # print(np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix, eulerFluxMatrix2))
-    #         # print(np.matmul(mesh.connectivityData.cells[i].GetStiffnessMatrix(), eulerFluxMatrix2))
-    #         # print(np.matmul(basisMatrixforF0.transpose(), numericalFluxArray[i][0].reshape(-1, 1).transpose()))
-    #         # print(np.matmul(basisMatrixforFace.transpose(), numericalFluxArray[i][1].reshape(-1, 1).transpose()))
-    #         # + np.matmul(basisMatrixforF1.transpose(), numericalFluxArray[i][1].reshape(-1, 1).transpose()))
-    #
-    #         divFlux = np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
-    #                             (np.matmul(basisMatrixforF0.transpose(),
-    #                                        numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
-    #                              np.matmul(basisMatrixforF1.transpose(),
-    #                                        numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
-    #                              np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs)))
-    #         uCoeffsNew[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs - deltaT * divFlux
-    #
-    #     for i in range(nCells):
-    #         mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
-
-    """ Start time-loop, TVD Runge Kutta """
+    # while iteration < 1:
     while endTime - time > 1e-10:
+
+        # """ Compute limited solution """
+        # for i in range(nCells):
+        #     mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
+        #         mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
+        #
+        #     uCoeffsNew[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs
+        #
+        # """ c-1, c, c+1, Neumann """
+        # L1, R1 = RoeCell(mesh.connectivityData.cells[0].solnCell.uPhysical)
+        # L2, R2 = RoeCell(mesh.connectivityData.cells[0].solnCell.uPhysical)
+        # temp_0 = np.matmul(L1, uCoeffsNew[0].transpose()).transpose()
+        # temp_1 = np.matmul(L2, uCoeffsNew[1].transpose()).transpose()
+        # mesh.connectivityData.cells[0].solnCell.uCoeffs = minmod(temp_0, temp_0, temp_1, R1)
+        #
+        # L1, R1 = RoeCell(mesh.connectivityData.cells[-2].solnCell.uPhysical)
+        # L2, R2 = RoeCell(mesh.connectivityData.cells[-1].solnCell.uPhysical)
+        # temp_0 = np.matmul(L1, uCoeffsNew[-2].transpose()).transpose()
+        # temp_1 = np.matmul(L2, uCoeffsNew[-1].transpose()).transpose()
+        # mesh.connectivityData.cells[-1].solnCell.uCoeffs = minmod(temp_0, temp_1, temp_1, R2)
+        #
+        # for i in range(nCells - 2):
+        #     L1, R1 = RoeCell(mesh.connectivityData.cells[i].solnCell.uPhysical)
+        #     L2, R2 = RoeCell(mesh.connectivityData.cells[i + 1].solnCell.uPhysical)
+        #     L3, R3 = RoeCell(mesh.connectivityData.cells[i + 2].solnCell.uPhysical)
+        #     temp_0 = np.matmul(L1, uCoeffsNew[i].transpose()).transpose()
+        #     temp_1 = np.matmul(L2, uCoeffsNew[i + 1].transpose()).transpose()
+        #     temp_2 = np.matmul(L3, uCoeffsNew[i + 2].transpose()).transpose()
+        #
+        #     mesh.connectivityData.cells[i + 1].solnCell.uCoeffs = \
+        #         minmod(temp_0, temp_1, temp_2, R2)
+
         """ Populate the faces values """
         for i in range(nCells):
             leftFaceValueArray[i] = np.matmul(basisMatrixforF0, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
@@ -516,8 +576,8 @@ if __name__ == '__main__':
         deltaT = computeDt(leftFaceValueArray, rightFaceValueArray, deltax, nCells, CFL)
 
         # Increment time
-        if time + deltaT > endTime:
-            deltaT = endTime - time
+        # if time + deltaT > endTime:
+        #     deltaT = endTime - time
         time += deltaT
         print("Current time: " + str(time))
 
@@ -547,99 +607,265 @@ if __name__ == '__main__':
             eulerFluxValues = np.array([eulerFlux(q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
             """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
             eulerFluxCoeffs = forwardTransform(mesh, eulerFluxValues, i)
-            # print(np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs))
-            divFlux = - np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
-                                  (np.matmul(basisMatrixforF0.transpose(),
-                                             numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
-                                   np.matmul(basisMatrixforF1.transpose(),
-                                             numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
-                                   np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs)))
-            uCoeffs1[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs + deltaT * divFlux
 
-        """ Second stage """
+            """ Test discrete Galerkin projection operation """
+            # print(np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix, eulerFluxMatrix2))
+            # print(np.matmul(mesh.connectivityData.cells[i].GetStiffnessMatrix(), eulerFluxMatrix2))
+            # print(np.matmul(basisMatrixforF0.transpose(), numericalFluxArray[i][0].reshape(-1, 1).transpose()))
+            # print(np.matmul(basisMatrixforFace.transpose(), numericalFluxArray[i][1].reshape(-1, 1).transpose()))
+            # + np.matmul(basisMatrixforF1.transpose(), numericalFluxArray[i][1].reshape(-1, 1).transpose()))
+
+            divFlux = np.matmul(mesh.connectivityData.cells[i].invMassMatrix,
+                                (np.matmul(basisMatrixforF0.transpose(),
+                                           numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
+                                 np.matmul(basisMatrixforF1.transpose(),
+                                           numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
+                                 np.matmul(mesh.connectivityData.cells[i].stiffnessMatrix, eulerFluxCoeffs)))
+            uCoeffsNew[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs - deltaT * divFlux
+
+        iteration += 1
+
+        # for i in range(nCells):
+        #     leftFaceValueArray[i] = np.matmul(basisMatrixforF0, uCoeffsNew[i])[0]
+        #     rightFaceValueArray[i] = np.matmul(basisMatrixforF1, uCoeffsNew[i])[0]
+        """ Characteristic variables """
+        avgValue = np.empty((nCells, nVars))
+
         for i in range(nCells):
-            leftFaceValueArray[i] = np.matmul(basisMatrixforF0, uCoeffs1[i])[0]
-            rightFaceValueArray[i] = np.matmul(basisMatrixforF1, uCoeffs1[i])[0]
+            avgValue[i] = uCoeffsNew[i][0]
 
-        """ Set Neumann boundary conditions """
-        numericalFluxArray[0][0] = numerical_flux(leftFaceValueArray[0], leftFaceValueArray[0]) * \
-                                   mesh.connectivityData.cells[0].calculations.faceNormals[0]
-        numericalFluxArray[0][1] = numerical_flux(rightFaceValueArray[0], leftFaceValueArray[1]) * \
-                                   mesh.connectivityData.cells[0].calculations.faceNormals[1]
-        numericalFluxArray[-1][0] = numerical_flux(rightFaceValueArray[-2], leftFaceValueArray[-1]) * \
-                                    mesh.connectivityData.cells[-1].calculations.faceNormals[0]
-        numericalFluxArray[-1][1] = numerical_flux(rightFaceValueArray[-1], rightFaceValueArray[-1]) * \
-                                    mesh.connectivityData.cells[-1].calculations.faceNormals[1]
+        charVars = np.empty((nCells, nCoords, nVars))
+        charCoeffs = np.empty((nCells, P1 + 1, nVars))
+        charCoeffsTemp = np.empty_like(charCoeffs)
 
-        """ Calculate numerical fluxes for internal faces """
+        L, R = np.empty((nCells, 3, 3)), np.empty((nCells, 3, 3))
+
+        for i in range(nCells - 1):
+            # mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
+            #     mesh.connectivityData.cells[i].matCell.basisMatrix, uCoeffsNew[i])
+            L[i], R[i] = RoeCell(avgValue[i], avgValue[i + 1])
+            # leftFaceValueArray[i] = np.matmul(basisMatrixforF0, uCoeffsNew[i])[0]
+            # rightFaceValueArray[i] = np.matmul(basisMatrixforF1, uCoeffsNew[i])[0]
+
+        L[-1], R[-1] = RoeCell(avgValue[-1], avgValue[-1])
+
+        """ c-1, c, c+1, Neumann """
+        # print(np.sum(mesh.connectivityData.cells[0].solnCell.uCoeffs, axis=0) / (P1 + 1))
+        # L1, R1 = RoeCell(mesh.connectivityData.cells[0].solnCell.uPhysical)
+        # L2, _ = RoeCell(mesh.connectivityData.cells[1].solnCell.uPhysical)
+        # temp_0 = np.matmul(L[0], mesh.connectivityData.cells[0].solnCell.uPhysical.transpose()).transpose()
+        # temp_1 = np.matmul(L[0], mesh.connectivityData.cells[1].solnCell.uPhysical.transpose()).transpose()
+        charCoeffs[0] = np.matmul(L[0], uCoeffsNew[0].transpose()).transpose()
+        charCoeffs[1] = np.matmul(L[0], uCoeffsNew[1].transpose()).transpose()
+        # charCoeffs[0] = np.matmul(L[0], uCoeffsNew[0].transpose()).transpose()
+        # charCoeffs[1] = np.matmul(L[1], uCoeffsNew[1].transpose()).transpose()
+        charCoeffsTemp[0] = minmod(charCoeffs[0], charCoeffs[0], charCoeffs[1])
+
+        # L1, _ = RoeCell(mesh.connectivityData.cells[-2].solnCell.uPhysical)
+        # L2, R2 = RoeCell(mesh.connectivityData.cells[-1].solnCell.uPhysical)
+        # temp_0 = np.matmul(L[-1], mesh.connectivityData.cells[-2].solnCell.uPhysical.transpose()).transpose()
+        # temp_1 = np.matmul(L[-1], mesh.connectivityData.cells[-1].solnCell.uPhysical.transpose()).transpose()
+        charCoeffs[-2] = np.matmul(L[-1], uCoeffsNew[-2].transpose()).transpose()
+        charCoeffs[-1] = np.matmul(L[-1], uCoeffsNew[-1].transpose()).transpose()
+        # charCoeffs[-2] = np.matmul(L[-2], uCoeffsNew[-2].transpose()).transpose()
+        # charCoeffs[-1] = np.matmul(L[-1], uCoeffsNew[-1].transpose()).transpose()
+        charCoeffsTemp[-1] = minmod(charCoeffs[-2], charCoeffs[-1], charCoeffs[-1])
+
         for i in range(nCells - 2):
-            numericalFluxArray[i + 1][0] = numerical_flux(rightFaceValueArray[i], leftFaceValueArray[i + 1]) \
-                                           * mesh.connectivityData.cells[i + 1].calculations.faceNormals[0]
-            numericalFluxArray[i + 1][1] = numerical_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2]) \
-                                           * mesh.connectivityData.cells[i + 1].calculations.faceNormals[1]
+            # L1, R1 = RoeCell(mesh.connectivityData.cells[i].solnCell.uPhysical)
+            # L2, R2 = RoeCell(mesh.connectivityData.cells[i + 1].solnCell.uPhysical)
+            # L3, R3 = RoeCell(mesh.connectivityData.cells[i + 2].solnCell.uPhysical)
+            # temp_0 = np.matmul(L[i + 1], mesh.connectivityData.cells[i].solnCell.uPhysical.transpose()).transpose()
+            # temp_1 = np.matmul(L[i + 1], mesh.connectivityData.cells[i + 1].solnCell.uPhysical.transpose()).transpose()
+            # temp_2 = np.matmul(L[i + 1], mesh.connectivityData.cells[i + 2].solnCell.uPhysical.transpose()).transpose()
+            charCoeffs[i] = np.matmul(L[i + 1], uCoeffsNew[i].transpose()).transpose()
+            charCoeffs[i + 1] = np.matmul(L[i + 1], uCoeffsNew[i + 1].transpose()).transpose()
+            charCoeffs[i + 2] = np.matmul(L[i + 1], uCoeffsNew[i + 2].transpose()).transpose()
+            # charCoeffs[i] = np.matmul(L[i], uCoeffsNew[i].transpose()).transpose()
+            # charCoeffs[i + 1] = np.matmul(L[i + 1], uCoeffsNew[i + 1].transpose()).transpose()
+            # charCoeffs[i + 2] = np.matmul(L[i + 2], uCoeffsNew[i + 2].transpose()).transpose()
+            charCoeffsTemp[i + 1] = minmod(charCoeffs[i], charCoeffs[i + 1], charCoeffs[i + 2])
 
-        """ Go through all cells """
+        """ Back to conserved variables """
         for i in range(nCells):
-            """ Backward transformation from coefficient space to physical space """
-            mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
-                mesh.connectivityData.cells[i].matCell.basisMatrix, uCoeffs1[i])
-            """ Euler flux values at quadrature points in the cell """
-            eulerFluxValues = np.array([eulerFlux(q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
-            """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
-            eulerFluxCoeffs = forwardTransform(mesh, eulerFluxValues, i)
+            # charVars[i] = np.matmul(
+            #     mesh.connectivityData.cells[i].matCell.basisMatrix, charCoeffsTemp[i])
+            mesh.connectivityData.cells[i].solnCell.uCoeffs = np.matmul(R[i], charCoeffsTemp[i].transpose()).transpose()
+            # mesh.connectivityData.cells[i].solnCell.uCoeffs = \
+            #     forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
 
-            divFlux = - np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
-                                  (np.matmul(basisMatrixforF0.transpose(),
-                                             numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
-                                   np.matmul(basisMatrixforF1.transpose(),
-                                             numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
-                                   np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs)))
-            uCoeffs2[i] = 0.75 * mesh.connectivityData.cells[i].solnCell.uCoeffs + 0.25 * uCoeffs1[i] + \
-                          0.25 * deltaT * divFlux
+        # """ c-1, c, c+1, Neumann """
+        # L1, R1 = RoeMatrix(rightFaceValueArray[0], leftFaceValueArray[1])
+        # L2, _ = RoeMatrix(rightFaceValueArray[1], leftFaceValueArray[2])
+        # temp_0 = np.matmul(L1, uCoeffsNew[0].transpose()).transpose()
+        # temp_1 = np.matmul(L2, uCoeffsNew[1].transpose()).transpose()
+        # mesh.connectivityData.cells[0].solnCell.uCoeffs = minmod(temp_0, temp_0, temp_1, R1)
+        #
+        # L1, _ = RoeMatrix(rightFaceValueArray[-2], leftFaceValueArray[-1])
+        # L2, R2 = RoeMatrix(rightFaceValueArray[-1], rightFaceValueArray[-1])
+        # temp_0 = np.matmul(L1, uCoeffsNew[-2].transpose()).transpose()
+        # temp_1 = np.matmul(L2, uCoeffsNew[-1].transpose()).transpose()
+        # mesh.connectivityData.cells[-1].solnCell.uCoeffs = minmod(temp_0, temp_1, temp_1, R2)
+        #
+        # L1, R1 = RoeMatrix(rightFaceValueArray[-3], leftFaceValueArray[-2])
+        # L2, R2 = RoeMatrix(rightFaceValueArray[-2], leftFaceValueArray[-1])
+        # L3, R3 = RoeMatrix(rightFaceValueArray[-1], rightFaceValueArray[-1])
+        # temp_0 = np.matmul(L1, uCoeffsNew[-3].transpose()).transpose()
+        # temp_1 = np.matmul(L2, uCoeffsNew[-2].transpose()).transpose()
+        # temp_2 = np.matmul(L3, uCoeffsNew[-1].transpose()).transpose()
+        # mesh.connectivityData.cells[-2].solnCell.uCoeffs = minmod(temp_0, temp_1, temp_2, R2)
+        #
+        # for i in range(nCells - 3):
+        #     L1, R1 = RoeMatrix(leftFaceValueArray[i], rightFaceValueArray[i + 1])
+        #     L2, R2 = RoeMatrix(leftFaceValueArray[i + 1], rightFaceValueArray[i + 2])
+        #     L3, R3 = RoeMatrix(leftFaceValueArray[i + 2], rightFaceValueArray[i + 3])
+        #
+        #     temp_0 = np.matmul(L1, uCoeffsNew[i].transpose()).transpose()
+        #     temp_1 = np.matmul(L2, uCoeffsNew[i + 1].transpose()).transpose()
+        #     temp_2 = np.matmul(L3, uCoeffsNew[i + 2].transpose()).transpose()
+        #
+        #     mesh.connectivityData.cells[i + 1].solnCell.uCoeffs = \
+        #         minmod(temp_0, temp_1, temp_2, R2)
 
-        """ Final stage """
-        for i in range(nCells):
-            leftFaceValueArray[i] = np.matmul(basisMatrixforF0, uCoeffs2[i])[0]
-            rightFaceValueArray[i] = np.matmul(basisMatrixforF1, uCoeffs2[i])[0]
+        """ Unlimited solution """
+        # for i in range(nCells):
+        #     mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
 
-        """ Set Neumann boundary conditions """
-        numericalFluxArray[0][0] = numerical_flux(leftFaceValueArray[0], leftFaceValueArray[0]) * \
-                                   mesh.connectivityData.cells[0].calculations.faceNormals[0]
-        numericalFluxArray[0][1] = numerical_flux(rightFaceValueArray[0], leftFaceValueArray[1]) * \
-                                   mesh.connectivityData.cells[0].calculations.faceNormals[1]
-        numericalFluxArray[-1][0] = numerical_flux(rightFaceValueArray[-2], leftFaceValueArray[-1]) * \
-                                    mesh.connectivityData.cells[-1].calculations.faceNormals[0]
-        numericalFluxArray[-1][1] = numerical_flux(rightFaceValueArray[-1], rightFaceValueArray[-1]) * \
-                                    mesh.connectivityData.cells[-1].calculations.faceNormals[1]
-
-        """ Calculate numerical fluxes for internal faces """
-        for i in range(nCells - 2):
-            numericalFluxArray[i + 1][0] = numerical_flux(rightFaceValueArray[i], leftFaceValueArray[i + 1]) \
-                                           * mesh.connectivityData.cells[i + 1].calculations.faceNormals[0]
-            numericalFluxArray[i + 1][1] = numerical_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2]) \
-                                           * mesh.connectivityData.cells[i + 1].calculations.faceNormals[1]
-
-        """ Go through all cells """
-        for i in range(nCells):
-            """ Backward transformation from coefficient space to physical space """
-            mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
-                mesh.connectivityData.cells[i].matCell.basisMatrix, uCoeffs2[i])
-            """ Euler flux values at quadrature points in the cell """
-            eulerFluxValues = np.array([eulerFlux(q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
-            """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
-            eulerFluxCoeffs = forwardTransform(mesh, eulerFluxValues, i)
-
-            divFlux = - np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
-                                  (np.matmul(basisMatrixforF0.transpose(),
-                                             numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
-                                   np.matmul(basisMatrixforF1.transpose(),
-                                             numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
-                                   np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs)))
-            uCoeffsNew[i] = (1 / 3) * mesh.connectivityData.cells[i].solnCell.uCoeffs + (2 / 3) * uCoeffs2[i] + \
-                            (2 / 3) * deltaT * divFlux
-
-        for i in range(nCells):
-            mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
+    """ Start time-loop, TVD Runge Kutta """
+    # while endTime - time > 1e-10:
+    #     """ Populate the faces values """
+    #     for i in range(nCells):
+    #         leftFaceValueArray[i] = np.matmul(basisMatrixforF0, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
+    #         rightFaceValueArray[i] = np.matmul(basisMatrixforF1, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
+    #
+    #     """ Calculate time-step size """
+    #     deltaT = computeDt(leftFaceValueArray, rightFaceValueArray, deltax, nCells, CFL)
+    #
+    #     # Increment time
+    #     if time + deltaT > endTime:
+    #         deltaT = endTime - time
+    #     time += deltaT
+    #     print("Current time: " + str(time))
+    #
+    #     """ Set Neumann boundary conditions, i.e., copy end cell values """
+    #     numericalFluxArray[0][0] = numerical_flux(leftFaceValueArray[0], leftFaceValueArray[0]) * \
+    #                                mesh.connectivityData.cells[0].calculations.faceNormals[0]
+    #     numericalFluxArray[0][1] = numerical_flux(rightFaceValueArray[0], leftFaceValueArray[1]) * \
+    #                                mesh.connectivityData.cells[0].calculations.faceNormals[1]
+    #     numericalFluxArray[-1][0] = numerical_flux(rightFaceValueArray[-2], leftFaceValueArray[-1]) * \
+    #                                 mesh.connectivityData.cells[-1].calculations.faceNormals[0]
+    #     numericalFluxArray[-1][1] = numerical_flux(rightFaceValueArray[-1], rightFaceValueArray[-1]) * \
+    #                                 mesh.connectivityData.cells[-1].calculations.faceNormals[1]
+    #
+    #     """ Calculate numerical fluxes for internal faces """
+    #     for i in range(nCells - 2):
+    #         numericalFluxArray[i + 1][0] = numerical_flux(rightFaceValueArray[i], leftFaceValueArray[i + 1]) \
+    #                                        * mesh.connectivityData.cells[i + 1].calculations.faceNormals[0]
+    #         numericalFluxArray[i + 1][1] = numerical_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2]) \
+    #                                        * mesh.connectivityData.cells[i + 1].calculations.faceNormals[1]
+    #
+    #     """ Go through all cells """
+    #     for i in range(nCells):
+    #         """ Backward transformation from coefficient space to physical space """
+    #         mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
+    #             mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
+    #         """ Euler flux values at quadrature points in the cell """
+    #         eulerFluxValues = np.array([eulerFlux(q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
+    #         """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
+    #         eulerFluxCoeffs = forwardTransform(mesh, eulerFluxValues, i)
+    #         # print(np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs))
+    #         divFlux = - np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
+    #                               (np.matmul(basisMatrixforF0.transpose(),
+    #                                          numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
+    #                                np.matmul(basisMatrixforF1.transpose(),
+    #                                          numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
+    #                                np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs)))
+    #         uCoeffs1[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs + deltaT * divFlux
+    #
+    #     """ Second stage """
+    #     for i in range(nCells):
+    #         leftFaceValueArray[i] = np.matmul(basisMatrixforF0, uCoeffs1[i])[0]
+    #         rightFaceValueArray[i] = np.matmul(basisMatrixforF1, uCoeffs1[i])[0]
+    #
+    #     """ Set Neumann boundary conditions """
+    #     numericalFluxArray[0][0] = numerical_flux(leftFaceValueArray[0], leftFaceValueArray[0]) * \
+    #                                mesh.connectivityData.cells[0].calculations.faceNormals[0]
+    #     numericalFluxArray[0][1] = numerical_flux(rightFaceValueArray[0], leftFaceValueArray[1]) * \
+    #                                mesh.connectivityData.cells[0].calculations.faceNormals[1]
+    #     numericalFluxArray[-1][0] = numerical_flux(rightFaceValueArray[-2], leftFaceValueArray[-1]) * \
+    #                                 mesh.connectivityData.cells[-1].calculations.faceNormals[0]
+    #     numericalFluxArray[-1][1] = numerical_flux(rightFaceValueArray[-1], rightFaceValueArray[-1]) * \
+    #                                 mesh.connectivityData.cells[-1].calculations.faceNormals[1]
+    #
+    #     """ Calculate numerical fluxes for internal faces """
+    #     for i in range(nCells - 2):
+    #         numericalFluxArray[i + 1][0] = numerical_flux(rightFaceValueArray[i], leftFaceValueArray[i + 1]) \
+    #                                        * mesh.connectivityData.cells[i + 1].calculations.faceNormals[0]
+    #         numericalFluxArray[i + 1][1] = numerical_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2]) \
+    #                                        * mesh.connectivityData.cells[i + 1].calculations.faceNormals[1]
+    #
+    #     """ Go through all cells """
+    #     for i in range(nCells):
+    #         """ Backward transformation from coefficient space to physical space """
+    #         mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
+    #             mesh.connectivityData.cells[i].matCell.basisMatrix, uCoeffs1[i])
+    #         """ Euler flux values at quadrature points in the cell """
+    #         eulerFluxValues = np.array([eulerFlux(q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
+    #         """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
+    #         eulerFluxCoeffs = forwardTransform(mesh, eulerFluxValues, i)
+    #
+    #         divFlux = - np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
+    #                               (np.matmul(basisMatrixforF0.transpose(),
+    #                                          numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
+    #                                np.matmul(basisMatrixforF1.transpose(),
+    #                                          numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
+    #                                np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs)))
+    #         uCoeffs2[i] = 0.75 * mesh.connectivityData.cells[i].solnCell.uCoeffs + 0.25 * uCoeffs1[i] + \
+    #                       0.25 * deltaT * divFlux
+    #
+    #     """ Final stage """
+    #     for i in range(nCells):
+    #         leftFaceValueArray[i] = np.matmul(basisMatrixforF0, uCoeffs2[i])[0]
+    #         rightFaceValueArray[i] = np.matmul(basisMatrixforF1, uCoeffs2[i])[0]
+    #
+    #     """ Set Neumann boundary conditions """
+    #     numericalFluxArray[0][0] = numerical_flux(leftFaceValueArray[0], leftFaceValueArray[0]) * \
+    #                                mesh.connectivityData.cells[0].calculations.faceNormals[0]
+    #     numericalFluxArray[0][1] = numerical_flux(rightFaceValueArray[0], leftFaceValueArray[1]) * \
+    #                                mesh.connectivityData.cells[0].calculations.faceNormals[1]
+    #     numericalFluxArray[-1][0] = numerical_flux(rightFaceValueArray[-2], leftFaceValueArray[-1]) * \
+    #                                 mesh.connectivityData.cells[-1].calculations.faceNormals[0]
+    #     numericalFluxArray[-1][1] = numerical_flux(rightFaceValueArray[-1], rightFaceValueArray[-1]) * \
+    #                                 mesh.connectivityData.cells[-1].calculations.faceNormals[1]
+    #
+    #     """ Calculate numerical fluxes for internal faces """
+    #     for i in range(nCells - 2):
+    #         numericalFluxArray[i + 1][0] = numerical_flux(rightFaceValueArray[i], leftFaceValueArray[i + 1]) \
+    #                                        * mesh.connectivityData.cells[i + 1].calculations.faceNormals[0]
+    #         numericalFluxArray[i + 1][1] = numerical_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2]) \
+    #                                        * mesh.connectivityData.cells[i + 1].calculations.faceNormals[1]
+    #
+    #     """ Go through all cells """
+    #     for i in range(nCells):
+    #         """ Backward transformation from coefficient space to physical space """
+    #         mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
+    #             mesh.connectivityData.cells[i].matCell.basisMatrix, uCoeffs2[i])
+    #         """ Euler flux values at quadrature points in the cell """
+    #         eulerFluxValues = np.array([eulerFlux(q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
+    #         """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
+    #         eulerFluxCoeffs = forwardTransform(mesh, eulerFluxValues, i)
+    #
+    #         divFlux = - np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
+    #                               (np.matmul(basisMatrixforF0.transpose(),
+    #                                          numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
+    #                                np.matmul(basisMatrixforF1.transpose(),
+    #                                          numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
+    #                                np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, eulerFluxCoeffs)))
+    #         uCoeffsNew[i] = (1 / 3) * mesh.connectivityData.cells[i].solnCell.uCoeffs + (2 / 3) * uCoeffs2[i] + \
+    #                         (2 / 3) * deltaT * divFlux
+    #
+    #     for i in range(nCells):
+    #         mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
 
     """ Plotting """
     pltPhysical = np.zeros((nCells, nCoords, nVars))
@@ -653,9 +879,9 @@ if __name__ == '__main__':
     plt.plot(pltCoords, (0.4 * (pltPhysical[:, :, 2] - 0.5 * pltPhysical[:, :, 0] * pltPhysical[:, :, 1] *
                                 pltPhysical[:, :, 1])).reshape(-1))
     plt.grid()
-    plt_name = test_case + "_" + numerical_flux.__name__ + "_" + "P" + str(P1) + "_" + str(endTime) + "_" + "TVDRK"
-    plt.savefig(plt_name + '.png', dpi=100)
-    np.savetxt(plt_name + "_coords.dat", pltCoords, delimiter=',')
+    plt_name = test_case + "_" + numerical_flux.__name__ + "_" + "P" + str(P1) + "_" + str(endTime) + "_" + "limited"
+    # plt.savefig(plt_name + '.png', dpi=100)
+    # np.savetxt(plt_name + "_coords.dat", pltCoords, delimiter=',')
     # np.savetxt(plt_name + "_values.dat", pltPhysical[:, :, 0].reshape(-1), delimiter=',')
     plt.show()
 

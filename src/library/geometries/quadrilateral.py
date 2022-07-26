@@ -4,7 +4,6 @@ File: quadrilateral.py
 Description: Quadrilateral shape derived class containing constant data
 """
 import numpy as np
-
 from src.library.geometries.geometry import Geometry
 
 
@@ -22,18 +21,10 @@ class Quadrilateral(Geometry):
         @:brief Main constructor for quad geometry
         :param pointlabels: Point IDs that make up the cell
         :param points:      Array of all point coordinates parsed in by reference
-        :param x:           Array of quadrature zeros x-coordinates
-        :param y:           Array of quadrature zeros y-coordinates
+        :param x:           Array of quadrature zeros xi1-coordinates
+        :param y:           Array of quadrature zeros xi2-coordinates
         """
         super().__init__()
-        # self.x1A = points[pointlabels[0]][0]
-        # self.x2A = points[pointlabels[0]][1]
-        # self.x1B = points[pointlabels[1]][0]
-        # self.x2B = points[pointlabels[1]][1]
-        # self.x1C = points[pointlabels[2]][0]
-        # self.x2C = points[pointlabels[2]][1]
-        # self.x1D = points[pointlabels[3]][0]
-        # self.x2D = points[pointlabels[3]][1]
         self.A = points[pointlabels[0]]
         self.B = points[pointlabels[1]]
         self.C = points[pointlabels[2]]
@@ -62,7 +53,6 @@ class Quadrilateral(Geometry):
     #     D = self.x1D
     #
     #     return - ((D - C + B - A) * self.y + D - C - B + A) / 4
-
     # def dx2dxi2(self):
     #     A = self.x2A
     #     B = self.x2B
@@ -70,7 +60,6 @@ class Quadrilateral(Geometry):
     #     D = self.x2D
     #
     #     return - ((D - C + B - A) * self.x - D - C + B + A) / 4
-    #
     # def dx1dxi2(self):
     #     A = self.x1A
     #     B = self.x1B
@@ -117,12 +106,10 @@ class Quadrilateral(Geometry):
 
     def invJacobianMatrix(self):
         # j = np.array([self.dxdxi1.reshape(-1), self.dxdxi2.reshape(-1)]).transpose()
-
         return np.linalg.inv(self.jacobianMatrix)
 
     def detJacobian(self):
         # print(self.dxdxi1[0] * self.dxdxi2[1] - self.dxdxi2[0] * self.dxdxi1[1])
-
         return np.linalg.det(self.jacobianMatrix)
 
     # def GetGradients(self, qPoints):

@@ -1,3 +1,8 @@
+"""
+File: ADR.py
+
+Description: Solve ADR equations in 1D
+"""
 import numpy as np
 import math
 from src.library.dgMesh.dgMesh import *
@@ -10,7 +15,7 @@ def computeDtForBurgers(meshObj, dx, ncells, ncoords, cfl):
     """
     @:brief Calculate time-step size for Burgers' equation with CFL constraints
     :param ncoords:   Number of quadrature points in a cell
-    :param meshObj:   Mesh object to obtain phyiscal scalar values in each cell
+    :param meshObj:   Mesh object to obtain physical scalar values in each cell
     :param dx:        Mesh size
     :param ncells:    Number of cells
     :param cfl:       Courant number
@@ -36,19 +41,19 @@ def upwind_flux(qleft, qright, v, n):
     :param n:      Normal vector
     :return: Upwind flux value
     """
-    # if qright * n >= 0:
-    #     return 0.5 * qleft * qleft * n
-    # elif qright * n < 0:
-    #     return 0.5 * qright * qright * n
-    # else:
-    #     raise NotImplementedError
-
-    if v * n >= 0:
-        return v * qleft * n
-    elif v * n < 0:
-        return v * qright * n
+    if qright * n >= 0:
+        return 0.5 * qleft * qleft * n
+    elif qright * n < 0:
+        return 0.5 * qright * qright * n
     else:
         raise NotImplementedError
+
+    # if v * n >= 0:
+    #     return v * qleft * n
+    # elif v * n < 0:
+    #     return v * qright * n
+    # else:
+    #     raise NotImplementedError
 
 
 def lax_friedrichs_flux(qleft, qright, dx, dt, left_flux, right_flux, n):
@@ -56,7 +61,7 @@ def lax_friedrichs_flux(qleft, qright, dx, dt, left_flux, right_flux, n):
 
 
 def forwardTransform(meshObj, physicalValues, cell):
-    return np.matmul(meshObj.connectivityData.cells[cell].matCell.invMassMatrix,
+    return np.matmul(meshObj.connectivityData.cells[cell].invMassMatrix,
                      np.matmul(meshObj.connectivityData.cells[cell].matCell.basisMatrix.transpose(),
                                meshObj.connectivityData.cells[cell].paramSeg.weights *
                                abs(meshObj.connectivityData.cells[cell].geomCell.detJacobian) *
@@ -71,12 +76,35 @@ def burgersFlux(speed, q):
     return 0.5 * q * q
 
 
+def minmod(prev, current, next, cell):
+
+    p_counter = P1
+    for var in range(nVars):
+        for p in range(P1, 0, -1):
+            coeff_tilde = 0
+            temp_a = current[p][var]
+            temp_b = next[p - 1][var] - current[p - 1][var]
+            temp_c = current[p - 1][var] - prev[p - 1][var]
+            # sign = np.where(np.logical_and(np.sign(temp_a) == np.sign(temp_b), np.sign(temp_b) == np.sign(temp_c)))[0]
+            if np.sign(temp_a) == np.sign(temp_b) and np.sign(temp_b) == np.sign(temp_c):
+                coeff_tilde = np.sign(temp_a) * min(abs(temp_a), min(abs(temp_b), abs(temp_c)))
+
+            if abs(temp_a - coeff_tilde) < 1.0e-6:
+                break
+            else:
+                cell[p][var] = coeff_tilde
+                p_counter -= 1
+
+        for remaining in range(p_counter, -1, -1):
+            cell[remaining][var] = current[remaining][var]
+
+
 if __name__ == '__main__':
     """
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/100x0"
+    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/64x0"
     nDims = 1
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
@@ -102,8 +130,8 @@ if __name__ == '__main__':
     numericalFluxArray = np.empty((nCells, 2, nVars))
 
     """ Left and right face variable values extrapolated using basis matrices at -1 and 1 in parametric space """
-    basisMatrixforF0 = GetLegendre1d(np.array([[-1]]), P1)
-    basisMatrixforF1 = GetLegendre1d(np.array([[1]]), P1)
+    basisMatrixforF0 = Legendre1d(np.array([[-1]]), P1)
+    basisMatrixforF1 = Legendre1d(np.array([[1]]), P1)
     leftFaceValueArray = np.empty((nCells, nVars))
     rightFaceValueArray = np.empty((nCells, nVars))
 
@@ -111,7 +139,7 @@ if __name__ == '__main__':
     Set initial values using the first coefficients for constant state, or using physical values then 
     transform back to coefficient space
     """
-    test_case = "step"
+    test_case = "burgers_sine"
     a = 1.0  # constant velocity
     numerical_flux = upwind_flux
 
@@ -134,7 +162,7 @@ if __name__ == '__main__':
         uR = 1.0
         xL = 0.25
         xR = 0.75
-        endTime = 1.0
+        endTime = 0.5
         flux = linearAdvFlux
         boundaryConditions = "Periodic"
 
@@ -147,7 +175,7 @@ if __name__ == '__main__':
                 mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
 
     elif test_case == "burgers_step":
-        endTime = 0.001
+        endTime = 0.1
         flux = burgersFlux
         boundaryConditions = "Neumann"
 
@@ -182,7 +210,7 @@ if __name__ == '__main__':
     # for i in range(nCells):
     #     print(mesh.connectivityData.cells[i].solnCell.uPhysical)
 
-    CFL = 0.003
+    CFL = 0.1
     # CFL = 1 / (2 * P1 + 1)
     deltaT = 0.0
     # Constant mesh size for now
@@ -196,13 +224,13 @@ if __name__ == '__main__':
             rightFaceValueArray[i] = np.matmul(basisMatrixforF1, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
 
         """ Calculate time-step size """
-        if flux == burgersFlux:
-            deltaT = computeDtForBurgers(mesh, deltax, nCells, nCoords, CFL)
-            # deltaT = CFL * deltax / a
-        elif flux == linearAdvFlux:
-            deltaT = CFL * deltax / a
-        else:
-            raise NotImplementedError
+        deltaT = computeDtForBurgers(mesh, deltax, nCells, nCoords, CFL)
+        # if flux == burgersFlux:
+        #     deltaT = computeDtForBurgers(mesh, deltax, nCells, nCoords, CFL)
+        # elif flux == linearAdvFlux:
+        #     deltaT = CFL * deltax / a
+        # else:
+        #     raise NotImplementedError
 
         # Increment time
         if time + deltaT > endTime:
@@ -279,7 +307,7 @@ if __name__ == '__main__':
         else:
             raise NotImplementedError
 
-        """ Calculate numerical fluxes for internal faces """
+        """ Calculate numerical fluxes for internal faces, qleft is always on the left side of a face instead """
         if numerical_flux == upwind_flux:
             for i in range(nCells - 2):
                 numericalFluxArray[i + 1][0] = upwind_flux(leftFaceValueArray[i + 1], rightFaceValueArray[i], a,
@@ -287,7 +315,6 @@ if __name__ == '__main__':
                 numericalFluxArray[i + 1][1] = upwind_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2], a,
                                                            mesh.connectivityData.cells[0].calculations.faceNormals[1])
         elif numerical_flux == lax_friedrichs_flux:
-            # qleft is always on the left side of a face instead
             for i in range(nCells - 2):
                 numericalFluxArray[i + 1][0] = lax_friedrichs_flux(leftFaceValueArray[i + 1], rightFaceValueArray[i],
                                                                    deltax, deltaT, flux(a, leftFaceValueArray[i + 1]),
@@ -303,7 +330,7 @@ if __name__ == '__main__':
         else:
             raise NotImplementedError
 
-        """ Initialise divergence of flux and new solution coefficients """
+        """ Initialise new solution coefficients """
         uCoeffsNew = np.zeros((nCells, P1 + 1, nVars))
 
         """ Go through all cells """
@@ -329,23 +356,31 @@ if __name__ == '__main__':
             #                     (np.matmul(massMatrixforF0, f0Coeffs) +
             #                      np.matmul(massMatrixforF1, f1Coeffs) -
             #                      np.matmul(mesh.connectivityData.cells[i].GetStiffnessMatrix(), fluxCoeffs)))
-            divFlux = np.matmul(mesh.connectivityData.cells[i].matCell.invMassMatrix,
+            divFlux = np.matmul(mesh.connectivityData.cells[i].invMassMatrix,
                                 (np.matmul(basisMatrixforF0.transpose(),
                                            numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
                                  np.matmul(basisMatrixforF1.transpose(),
                                            numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
-                                 np.matmul(mesh.connectivityData.cells[i].matCell.stiffnessMatrix, fluxCoeffs)))
+                                 np.matmul(mesh.connectivityData.cells[i].stiffnessMatrix, fluxCoeffs)))
             uCoeffsNew[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs - deltaT * divFlux
 
-        for i in range(nCells):
-            mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
+        """ c-1, c, c+1, periodic """
+        minmod(uCoeffsNew[-1], uCoeffsNew[0], uCoeffsNew[1], mesh.connectivityData.cells[0].solnCell.uCoeffs)
+        minmod(uCoeffsNew[-2], uCoeffsNew[-1], uCoeffsNew[0], mesh.connectivityData.cells[-1].solnCell.uCoeffs)
+        for i in range(nCells - 2):
+            minmod(uCoeffsNew[i], uCoeffsNew[i + 1], uCoeffsNew[i + 2],
+                   mesh.connectivityData.cells[i + 1].solnCell.uCoeffs)
 
+        """ No limiter solution """
+        # for i in range(nCells):
+        #     mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
+
+    """ Plot """
     pltPhysical = np.zeros((nCells, nCoords, nVars))
     for i in range(nCells):
         pltPhysical[i] = np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix,
                                    mesh.connectivityData.cells[i].solnCell.uCoeffs)
 
-    # print(pltPhysical[:, :, 0].reshape(-1))
     pltCoords = np.array([mesh.connectivityData.cells[i].GetQuadratureCoords for i in range(nCells)]).reshape(-1)
     plt.plot(pltCoords, pltPhysical[:, :, 0].reshape(-1))
     # plt.rc('axes', linewidth=1.25)
@@ -354,8 +389,8 @@ if __name__ == '__main__':
     # plt.yticks([-1, 0, 1])
     # plt.tick_params(axis='y', direction='in', pad=5)
     plt.grid()
-    plt_name = test_case + "_" + "P" + str(P1) + "_" + str(endTime) + '.png'
-    plt.savefig(plt_name, dpi=100)
-    np.savetxt(plt_name + "_coords.dat", pltCoords, delimiter=',')
-    np.savetxt(plt_name + "_values.dat", pltPhysical[:, :, 0].reshape(-1), delimiter=',')
+    plt_name = test_case + "_" + "P" + str(P1) + "_" + str(endTime)
+    plt.savefig(plt_name + '_limited.png', dpi=100)
+    # np.savetxt(plt_name + "_coords.dat", pltCoords, delimiter=',')
+    # np.savetxt(plt_name + "_values.dat", pltPhysical[:, :, 0].reshape(-1), delimiter=',')
     plt.show()
