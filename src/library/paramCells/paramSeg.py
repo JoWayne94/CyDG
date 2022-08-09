@@ -12,27 +12,27 @@ from src.library.paramCells.paramCell import ParamCell as Cell
 
 class ParamSeg(Cell):
 
-    def __init__(self, quadrature, p):
+    def __init__(self, quadrature, p1):
         """
         @:brief Main constructor
-        :param p:          Polynomial order in the xi_1 direction
+        :param p1:         Polynomial order in the xi_1 direction
         :param quadrature: Type of quadrature selected
         """
         # if nNodes is None:
         #     self.nNodes = 0
         # else:
         #     self.nNodes = nNodes
-        self.P = p
+        self.P1 = p1
         self.Quadrature = quadrature
         self.Zeros, self.Weights = self.GetQuadratureZerosWeights()
 
     @property
-    def p(self):
-        return self.P
+    def p1(self):
+        return self.P1
 
-    @p.setter
-    def p(self, value):
-        self.P = value
+    @p1.setter
+    def p1(self, value):
+        self.P1 = value
 
     @property
     def quadrature(self):
@@ -48,7 +48,7 @@ class ParamSeg(Cell):
 
     def GetQuadratureZerosWeights(self):
 
-        if self.quadrature == "GL" or self.p == 1:  # Gauss-Legendre
+        if self.quadrature == "GL" or self.p1 == 1:  # Gauss-Legendre
             qZeros, qWeights = self.GetQuadratureGL()
         elif self.quadrature == "GLL":  # Gauss-Lobatto-Legendre
             qZeros, qWeights = self.GetQuadratureGLL()
@@ -62,11 +62,8 @@ class ParamSeg(Cell):
         @:brief Get quadrature zeros and weights using numpy Gauss-Legendre library
         :return: Quadrature point coordinates and weights
         """
-        # If p is even, add 1
-        # if self.p % 2 == 0:
-        #     self.p += 1
         # Number of integration points to obtain exact integration given polynomial order
-        nZeros = (self.p + 1)  # // 2
+        nZeros = (self.p1 + 1)  # // 2
 
         qZeros, qWeights = np.polynomial.legendre.leggauss(nZeros)
 
@@ -81,10 +78,10 @@ class ParamSeg(Cell):
         :return: Quadrature point coordinates and weights
         """
         # If p is even, add 1
-        if self.p % 2 == 0:
-            self.p += 1
+        if self.p1 % 2 == 0:
+            self.p1 += 1
         # Number of integration points to obtain exact integration given polynomial order
-        nZeros = (self.p + 3) // 2
+        nZeros = (self.p1 + 3) // 2
 
         qZeros, qWeights = self.GetGLLZerosWeights(nZeros, np.finfo(float).eps)
         qZeros = qZeros.reshape(qZeros.shape[0], 1)
@@ -96,6 +93,7 @@ class ParamSeg(Cell):
     def GetGLLZerosWeights(m, tol):
         """
         @:brief Get Gauss-Lobatto-Legendre zeros and weights using Newton-Raphson iteration
+                https://uk.mathworks.com/matlabcentral/fileexchange/4775-legende-gauss-lobatto-nodes-and-weights
         :param m:   nZeros - 1
         :param tol: Tolerance set as machine precision/epsilon
         :return: Quadrature zero coordinates and weights

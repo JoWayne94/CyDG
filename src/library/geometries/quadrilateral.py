@@ -18,7 +18,7 @@ class Quadrilateral(Geometry):
 
     def __init__(self, pointlabels, points, x, y):
         """
-        @:brief Main constructor for quad geometry
+        @:brief Main constructor for linear quad geometry
         :param pointlabels: Point IDs that make up the cell
         :param points:      Array of all point coordinates parsed in by reference
         :param x:           Array of quadrature zeros xi1-coordinates
@@ -34,7 +34,7 @@ class Quadrilateral(Geometry):
 
     def parametricMapping(self):
         """
-        @:brief Linear mapping between a parametric quad cell and a straight sided quad cell in real space
+        @:brief Linear mapping between a parametric quad cell and a straight-sided quad cell in real space
         :return: Arrays of x and y-coordinates in physical space given arrays in parametric space
         """
         coords = np.empty((2, self.x.shape[0]), dtype=float)
@@ -46,27 +46,15 @@ class Quadrilateral(Geometry):
 
         return coords
 
-    # def dx1dxi1(self):
-    #     A = self.x1A
-    #     B = self.x1B
-    #     C = self.x1C
-    #     D = self.x1D
-    #
-    #     return - ((D - C + B - A) * self.y + D - C - B + A) / 4
-    # def dx2dxi2(self):
-    #     A = self.x2A
-    #     B = self.x2B
-    #     C = self.x2C
-    #     D = self.x2D
-    #
-    #     return - ((D - C + B - A) * self.x - D - C + B + A) / 4
-    # def dx1dxi2(self):
-    #     A = self.x1A
-    #     B = self.x1B
-    #     C = self.x1C
-    #     D = self.x1D
-    #
-    #     return - ((D - C + B - A) * self.x - D - C + B + A) / 4
+    @property
+    def dxdxi1(self):
+
+        dxdxi1 = np.empty((2, self.x.shape[0]), dtype=float)
+        for i in range(2):
+            dxdxi1[i] = -((self.D[i] - self.C[i] + self.B[i] - self.A[i]) * self.y +
+                          self.D[i] - self.C[i] - self.B[i] + self.A[i]) / 4
+
+        return dxdxi1
 
     @property
     def dxdxi2(self):
@@ -77,24 +65,6 @@ class Quadrilateral(Geometry):
                           self.D[i] - self.C[i] + self.B[i] + self.A[i]) / 4
 
         return dxdxi2
-
-    # def dx2dxi1(self):
-    #     A = self.x2A
-    #     B = self.x2B
-    #     C = self.x2C
-    #     D = self.x2D
-    #
-    #     return - ((D - C + B - A) * self.y + D - C - B + A) / 4
-
-    @property
-    def dxdxi1(self):
-
-        dxdxi1 = np.empty((2, self.x.shape[0]), dtype=float)
-        for i in range(2):
-            dxdxi1[i] = -((self.D[i] - self.C[i] + self.B[i] - self.A[i]) * self.y +
-                          self.D[i] - self.C[i] - self.B[i] + self.A[i]) / 4
-
-        return dxdxi1
 
     @property
     def jacobianMatrix(self):
@@ -111,29 +81,3 @@ class Quadrilateral(Geometry):
     def detJacobian(self):
         # print(self.dxdxi1[0] * self.dxdxi2[1] - self.dxdxi2[0] * self.dxdxi1[1])
         return np.linalg.det(self.jacobianMatrix)
-
-    # def GetGradients(self, qPoints):
-    #
-    #     p = self.p
-    #     nBasis = (p + 1)**2
-    #     nPoints = qPoints.shape[0]
-    #
-    #     basisGrad = np.zeros([nPoints, nBasis, 2])
-    #
-    #     if p > 0:
-    #         nodeCoords = equidistant_nodes_1d(-1.0, 1.0, p + 1)
-    #         GetLagrange2d(qPoints, nodeCoords, basisGrad=basisGrad)
-    #
-    #     return basisGrad  # [nq, nb, ndims]
-    #
-    # def CalculateJacobian(self, qPoints, points):
-    #     basisGrad = self.GetGradients(qPoints)
-    #
-    #     print(points.transpose())
-    #
-    #     # for i in range(len(points)):
-    #     #     points[i] = equidistant_nodes_1d(points[i][0], points[i][1], self.p + 1)
-    #
-    #     jac = np.tensordot(basisGrad, points.transpose(), axes=[[1], [1]]).transpose((0, 2, 1))
-    #
-    #     return jac

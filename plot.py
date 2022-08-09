@@ -8,6 +8,35 @@ import numpy as np
 from matplotlib.ticker import LinearLocator
 from src.library.paramCells.basis import *
 from src.library.geometries.quadrilateral import Quadrilateral as QuadGeom
+from scipy.special import kn
+
+
+# %%
+x = np.linspace(-1, 1, 15)
+y = np.linspace(-1, 1, 15)
+X, Y = np.meshgrid(x, y)
+U = -Y
+V = X
+
+fig, ax = plt.subplots()
+q = ax.quiver(X, Y, U, V)
+ax.quiverkey(q, X=0.4, Y=1.05, U=1, label='Velocity field', labelpos='E')
+
+plt.show()
+
+
+# %%
+point_source = 16.67
+y = 0.5
+x = np.linspace(0.05, 4.05, 100)
+kappa = 0.05
+g_d = (point_source / (2 * np.pi * kappa)) * \
+              kn(0, (np.sqrt(x ** 2 + y ** 2)) / (2 * kappa)) * \
+              np.exp(x / (2 * kappa))
+
+plt.plot(x, g_d)
+
+plt.show()
 
 # %%
 """ Define x and y-coordinates in parametric space """
@@ -18,25 +47,23 @@ xyCoords = np.column_stack((y2d.ravel(), x2d.ravel()))
 
 """ Define a quadrilateral geometry with integration points equal to x, y-coordinates above """
 quad = QuadGeom(np.array([0, 1, 2, 3]), np.array([[0, 0], [2, 0], [2, 1], [0, 1]]),
-                np.array([i[0] for i in xyCoords]),
-                np.array([i[1] for i in xyCoords]))
+                np.array([i[0] for i in xyCoords]), np.array([i[1] for i in xyCoords]))
 
 """ Get 2d basis values in parametric space """
 # Basis values
-value2d = GetLegendre2d(xyCoords, 1, 1)
+value2d = Legendre2d(xyCoords, 1, 1)
 # Basis gradients
-# value2d = GetLegendre2dGrad(xyCoords, 1, 1)
+# value2d = Legendre2dGrad(xyCoords, 1, 1)
 
 """ Define solution coefficients """
 uCoeffs = np.array([0, 0, 0, 1])
 
-""" Approximate solution, u = B uCoeffs """
+""" Approximate solution, u_h = B uCoeffs """
 # Approximate solution in real space
-plotBase = np.matmul(value2d * quad.detJacobian().reshape(-1, 1), uCoeffs)
+plotBase = np.matmul(value2d, uCoeffs)
 # Approximate solution in parametric space
 # plotBase = np.matmul(value2d[:, :, 1], uCoeffs)
 plotBase = np.reshape(plotBase.transpose(), (y2d.shape[0], x2d.shape[0]))
-# tensorialBase = np.reshape(value2d.transpose()[i], (y2d.shape[0], x2d.shape[0]))
 
 """ Define new coordinates in real space """
 # x2dnew, y2dnew = np.meshgrid(quad.parametricMapping()[0], quad.parametricMapping()[1])
@@ -86,9 +113,9 @@ plt.show()
 #     x2d, y2d = np.meshgrid(xCoords, yCoords)
 #     xyCoords = np.column_stack((y2d.ravel(), x2d.ravel()))
 #
-#     value2d = GetLegendre2d(xyCoords, 2, 2)
+#     value2d = Legendre2d(xyCoords, 2, 2)
 #     # nodeCoords = np.linspace(-1, 1, num=5)
-#     # value2d = GetLagrange2d(xyCoords, nodeCoords, nodeCoords)
+#     # value2d = Lagrange2d(xyCoords, nodeCoords, nodeCoords)
 #     tensorialBase = np.reshape(value2d.transpose()[i], (y2d.shape[0], x2d.shape[0]))
 #
 #     fig, ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(4.8, 4.8), dpi=100)

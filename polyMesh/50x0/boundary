@@ -12,6 +12,6 @@
         type            wall;
         inGroups        1(wall);
         nFaces          1;
-        boundaryList    (4 1);
+        boundaryList    (49 1);
     }
 )

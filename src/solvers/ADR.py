@@ -1,102 +1,66 @@
 """
 File: ADR.py
 
-Description: Solve ADR equations in 1D
+Description: Solve linear advection diffusion equation implicitly in 1D with backward Euler time-stepping
 """
 import numpy as np
 import math
+from src.solvers.explicitAdv import *
+from scipy.sparse.linalg import spsolve
 from src.library.dgMesh.dgMesh import *
 from src.library.paramCells.basis import *
-import matplotlib.pyplot as plt
-from matplotlib.ticker import LinearLocator
 
 
-def computeDtForBurgers(meshObj, dx, ncells, ncoords, cfl):
+def sipFlux(cell_left, cell_right, bleft, bright, dleft, dright, n):
     """
-    @:brief Calculate time-step size for Burgers' equation with CFL constraints
-    :param ncoords:   Number of quadrature points in a cell
-    :param meshObj:   Mesh object to obtain physical scalar values in each cell
-    :param dx:        Mesh size
-    :param ncells:    Number of cells
-    :param cfl:       Courant number
-    :return: Time-step size
+    @:brief Symmetric Interior Penalty method
+    :param cell_left:   Owner cell
+    :param cell_right:  Neighbour cell
+    :param bleft:       Owner face basis matrix
+    :param bright:      Neighbour face basis matrix
+    :param dleft:       Owner face derivative matrix
+    :param dright:      Neighbour face derivative matrix
+    :param n:           Owner face unit normal vector
+    :return: Block-matrix contributions
     """
+    dxi1dx1_left = cell_left.geomCell.geometry.dxi1dx1
+    dxi1dx1_right = cell_right.geomCell.geometry.dxi1dx1
 
-    smax = -1.0e6  # a big negative number
-    for cell in range(ncells):
-        for quadrature in range(ncoords):
-            value = abs(meshObj.connectivityData.cells[cell].solnCell.uPhysical[quadrature][0])
-            if value > smax:
-                smax = value
+    owner = n * (- 0.5 * np.matmul(bleft.transpose(), (dxi1dx1_left * dleft)[:, :, 0])
+                 - 0.5 * np.matmul((dxi1dx1_left * dleft)[:, :, 0].transpose(), bleft)) \
+            + eta * np.matmul(bleft.transpose(), bleft)
 
-    return cfl * dx / smax  # make sure dt addition does not exceed final time output
+    own_neigh = n * (0.5 * np.matmul(bright.transpose(), (dxi1dx1_left * dleft)[:, :, 0])
+                     - 0.5 * np.matmul((dxi1dx1_right * dright)[:, :, 0].transpose(), bleft)) \
+                - eta * np.matmul(bright.transpose(), bleft)
+
+    neigh_own = n * (- 0.5 * np.matmul(bleft.transpose(), (dxi1dx1_right * dright)[:, :, 0])
+                     + 0.5 * np.matmul((dxi1dx1_left * dleft)[:, :, 0].transpose(), bright)) \
+                - eta * np.matmul(bleft.transpose(), bright)
+
+    neighbour = n * (0.5 * np.matmul(bright.transpose(), (dxi1dx1_right * dright)[:, :, 0])
+                     + 0.5 * np.matmul((dxi1dx1_right * dright)[:, :, 0].transpose(), bright)) \
+                + eta * np.matmul(bright.transpose(), bright)
+
+    return owner, own_neigh, neigh_own, neighbour
 
 
-def upwind_flux(qleft, qright, v, n):
+def sipFluxBoundary(cell_left, bleft, dleft, n):
     """
-    @:brief Upwind flux of a scalar advection
-    :param qleft:  Left state value
-    :param qright: Right state value
-    :param v:      Constant advection velocity
-    :param n:      Normal vector
-    :return: Upwind flux value
+    @:brief Symmetric Interior Penalty method on Dirichlet boundaries
+    :param cell_left: Boundary cell
+    :param bleft:     Boundary face basis matrix
+    :param dleft:     Boundary face derivative matrix
+    :param n:         Boundary face unit normal vector
+    :return: Diagonal block coefficient contribution
     """
-    if qright * n >= 0:
-        return 0.5 * qleft * qleft * n
-    elif qright * n < 0:
-        return 0.5 * qright * qright * n
-    else:
-        raise NotImplementedError
+    dxi1dx1_left = cell_left.geomCell.geometry.dxi1dx1
 
-    # if v * n >= 0:
-    #     return v * qleft * n
-    # elif v * n < 0:
-    #     return v * qright * n
-    # else:
-    #     raise NotImplementedError
+    sip_left = n * (- np.matmul(bleft.transpose(), (dxi1dx1_left * dleft)[:, :, 0])
+                    - np.matmul((dxi1dx1_left * dleft)[:, :, 0].transpose(), bleft)) \
+               + eta * np.matmul(bleft.transpose(), bleft)
 
-
-def lax_friedrichs_flux(qleft, qright, dx, dt, left_flux, right_flux, n):
-    return 0.5 * (dx / dt) * (qleft - qright) + 0.5 * (left_flux + right_flux) * n
-
-
-def forwardTransform(meshObj, physicalValues, cell):
-    return np.matmul(meshObj.connectivityData.cells[cell].invMassMatrix,
-                     np.matmul(meshObj.connectivityData.cells[cell].matCell.basisMatrix.transpose(),
-                               meshObj.connectivityData.cells[cell].paramSeg.weights *
-                               abs(meshObj.connectivityData.cells[cell].geomCell.detJacobian) *
-                               physicalValues))
-
-
-def linearAdvFlux(speed, q):
-    return speed * q
-
-
-def burgersFlux(speed, q):
-    return 0.5 * q * q
-
-
-def minmod(prev, current, next, cell):
-
-    p_counter = P1
-    for var in range(nVars):
-        for p in range(P1, 0, -1):
-            coeff_tilde = 0
-            temp_a = current[p][var]
-            temp_b = next[p - 1][var] - current[p - 1][var]
-            temp_c = current[p - 1][var] - prev[p - 1][var]
-            # sign = np.where(np.logical_and(np.sign(temp_a) == np.sign(temp_b), np.sign(temp_b) == np.sign(temp_c)))[0]
-            if np.sign(temp_a) == np.sign(temp_b) and np.sign(temp_b) == np.sign(temp_c):
-                coeff_tilde = np.sign(temp_a) * min(abs(temp_a), min(abs(temp_b), abs(temp_c)))
-
-            if abs(temp_a - coeff_tilde) < 1.0e-6:
-                break
-            else:
-                cell[p][var] = coeff_tilde
-                p_counter -= 1
-
-        for remaining in range(p_counter, -1, -1):
-            cell[remaining][var] = current[remaining][var]
+    return sip_left
 
 
 if __name__ == '__main__':
@@ -104,47 +68,47 @@ if __name__ == '__main__':
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/64x0"
+    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/100x0"
     nDims = 1
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
-    P1 = 3
+    P1 = 1
     P2 = 0
     # Read in the mesh
     mesh = DgMesh.constructFromPolyMeshFolder(name, nDims)
     mesh.constructShapeBasedCells(name, nVars, P1, P2)
 
-    """
-    Prototype time-loop with forward Euler time-stepping
-    """
-
     """ Set test case """
-    time = 0.0
+    time = 0.
+    deltaT = 0.
+    endTime = 0.
     nCells = len(mesh.connectivityData.cells)
     quadCoords = mesh.connectivityData.cells[0].GetQuadratureCoords
 
     """ Number of quadrature points within a single cell """
     nCoords = len(quadCoords)
 
-    """ Numerical flux array [Number of cells in mesh, left and right numerical fluxes, number of variables]"""
-    numericalFluxArray = np.empty((nCells, 2, nVars))
-
-    """ Left and right face variable values extrapolated using basis matrices at -1 and 1 in parametric space """
+    """ Left and right face state values extrapolated using basis matrices at -1 and 1 in parametric space """
     basisMatrixforF0 = Legendre1d(np.array([[-1]]), P1)
     basisMatrixforF1 = Legendre1d(np.array([[1]]), P1)
-    leftFaceValueArray = np.empty((nCells, nVars))
-    rightFaceValueArray = np.empty((nCells, nVars))
+    derivMatrixforF0 = Legendre1dGrad(np.array([[-1]]), P1)
+    derivMatrixforF1 = Legendre1dGrad(np.array([[1]]), P1)
 
     """
     Set initial values using the first coefficients for constant state, or using physical values then 
     transform back to coefficient space
     """
-    test_case = "burgers_sine"
-    a = 1.0  # constant velocity
+    test_case = "advection_diffusion_sine_wave"
+    a = 0.  # constant velocity
+    kappa = 0.
+    forcing = 0.
+    g_d_left = None
+    g_d_right = None
     numerical_flux = upwind_flux
 
-    if test_case == "sine":
-        endTime = 0.0
+    if test_case == "pure_advection_sine_wave":
+        a = 1.
+        endTime = 1.0
         flux = linearAdvFlux
         boundaryConditions = "Periodic"
 
@@ -157,44 +121,88 @@ if __name__ == '__main__':
             mesh.connectivityData.cells[i].solnCell.uCoeffs = \
                 forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
 
-    elif test_case == "step":
-        uL = 0.0
-        uR = 1.0
-        xL = 0.25
-        xR = 0.75
-        endTime = 0.5
+    elif test_case == "pure_advection_step_profile":
+        u_l = 0.
+        u_r = 1.
+        x_l = 0.25
+        x_r = 0.75
+        a = 1.
+        endTime = 1.0
         flux = linearAdvFlux
         boundaryConditions = "Periodic"
 
         for i in range(nCells):
-            # Initial condition for step function
+            # Initial condition for step profile
             mesh.connectivityData.cells[i].solnCell.uCoeffs[0] = np.array(
-                [uR if xL <= coords <= xR else uL for coords in mesh.connectivityData.cells[i].calculations.cellCentre])
+                [u_r if x_l <= coords <= x_r else u_l for coords in
+                 mesh.connectivityData.cells[i].calculations.cellCentre])
             # Set physical values, no need * abs(mesh.connectivityData.cells[i].geomCell.detJacobian)
             mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
                 mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
 
-    elif test_case == "burgers_step":
-        endTime = 0.1
-        flux = burgersFlux
-        boundaryConditions = "Neumann"
+    elif test_case == "Laplace":
+        g_d_left = 5.
+        g_d_right = 2.
+        kappa = 1.
+        forcing = 0.  # -Laplace(u) = forcing
+        boundaryConditions = "Dirichlet"
+
+        """ No initial conditions """
+
+    elif test_case == "Poisson":
+        g_d_left = 0.
+        g_d_right = 0.
+        kappa = 1.
+        forcing = 2.  # -Laplace(u) = forcing
+        boundaryConditions = "Dirichlet"
+
+        """ No initial conditions """
+
+    elif test_case == "pure_diffusion_sine_wave":
+        g_d_left = 0.
+        g_d_right = 0.
+        kappa = 1.
+        forcing = 0.  # du/dt - Laplace(u) = forcing
+        endTime = 0.3
+        boundaryConditions = "Dirichlet"
 
         for i in range(nCells):
-            # Initial condition for Burgers' equation
-            mesh.connectivityData.cells[i].solnCell.uCoeffs[0] = np.array(
-                [2 if coords < 0.5 else 1 for coords in mesh.connectivityData.cells[i].calculations.cellCentre])
+            # Initial condition for sine wave
+            for coords in range(nCoords):
+                mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
+                    np.sin(np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coords])
+
+            mesh.connectivityData.cells[i].solnCell.uCoeffs = \
+                forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
+
+    elif test_case == "pure_diffusion_segment":
+        g_d_left = 5.
+        g_d_right = 17.
+        kappa = 1.
+        forcing = 0.  # du/dt - Laplace(u) = forcing
+        endTime = 1.0
+        boundaryConditions = "Dirichlet"
+
+        for i in range(nCells):
+            # Zeros initial condition, not necessary
+            mesh.connectivityData.cells[i].solnCell.uCoeffs[0] = 0.
+            # Set physical values
             mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
                 mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
 
-    elif test_case == "burgers_sine":
+    elif test_case == "advection_diffusion_sine_wave":
+        a = 1.
+        kappa = 0.01
+        forcing = 0.  # du/dt + a du/dx - Laplace(u) = forcing
         endTime = 1.0
-        flux = burgersFlux
+        flux = linearAdvFlux
         boundaryConditions = "Periodic"
 
         for i in range(nCells):
+            # Initial condition for sine wave
             for coords in range(nCoords):
                 mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
-                    0.5 + 0.5 * np.sin(np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coords])
+                    np.sin(2 * np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coords])
 
             mesh.connectivityData.cells[i].solnCell.uCoeffs = \
                 forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
@@ -202,195 +210,196 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
 
-    # print("Initial coefficients: ")
-    # for i in range(nCells):
-    #     print(mesh.connectivityData.cells[i].solnCell.uCoeffs)
-    #
-    # print("Initial physical values: ")
-    # for i in range(nCells):
-    #     print(mesh.connectivityData.cells[i].solnCell.uPhysical)
+    if a < 0:
+        print("Advection velocity has to be positive for now.")
+        raise ValueError
+    if kappa < 0:
+        print("Negative diffusivity will blow up the solution.")
+        raise ValueError
 
-    CFL = 0.1
-    # CFL = 1 / (2 * P1 + 1)
-    deltaT = 0.0
+    plotSolution(mesh, nCells, nCoords, nVars, test_case, P1, 0.0)
+
+    CFL = 0.01
     # Constant mesh size for now
     deltax = mesh.connectivityData.cells[0].calculations.V
 
-    """ Start time-loop """
-    while endTime - time > 1e-10:
-        """ Populate the faces values """
-        for i in range(nCells):
-            leftFaceValueArray[i] = np.matmul(basisMatrixforF0, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
-            rightFaceValueArray[i] = np.matmul(basisMatrixforF1, mesh.connectivityData.cells[i].solnCell.uCoeffs)[0]
+    """ Initialise global block-matrix coefficients """
+    """ Global diagonal upwind matrix """
+    globalDiag = np.zeros((nCells, nCells, P1 + 1, P1 + 1))
 
-        """ Calculate time-step size """
-        deltaT = computeDtForBurgers(mesh, deltax, nCells, nCoords, CFL)
-        # if flux == burgersFlux:
-        #     deltaT = computeDtForBurgers(mesh, deltax, nCells, nCoords, CFL)
-        # elif flux == linearAdvFlux:
-        #     deltaT = CFL * deltax / a
-        # else:
-        #     raise NotImplementedError
+    """ Global off-diagonal matrix """
+    globalOffDiag = np.zeros_like(globalDiag)
 
-        # Increment time
-        if time + deltaT > endTime:
-            deltaT = endTime - time
-        time += deltaT
-        print("Current time: " + str(time))
+    """ Global mass matrix """
+    massMatrices = np.zeros_like(globalDiag)
 
-        if boundaryConditions == "Periodic":
-            if numerical_flux == upwind_flux:
-                """ Set periodic boundary conditions, i.e., copy end cell values to the other end """
-                numericalFluxArray[0][0] = upwind_flux(leftFaceValueArray[0], rightFaceValueArray[-1], a,
-                                                       mesh.connectivityData.cells[0].calculations.faceNormals[0])
-                numericalFluxArray[0][1] = upwind_flux(rightFaceValueArray[0], leftFaceValueArray[1], a,
-                                                       mesh.connectivityData.cells[0].calculations.faceNormals[1])
-                numericalFluxArray[-1][0] = upwind_flux(leftFaceValueArray[-1], rightFaceValueArray[-2], a,
-                                                        mesh.connectivityData.cells[0].calculations.faceNormals[0])
-                numericalFluxArray[-1][1] = upwind_flux(rightFaceValueArray[-1], leftFaceValueArray[0], a,
-                                                        mesh.connectivityData.cells[0].calculations.faceNormals[1])
-            elif numerical_flux == lax_friedrichs_flux:
-                """ Set Periodic boundary conditions, Lax Friedrichs flux """
-                numericalFluxArray[0][0] = lax_friedrichs_flux(leftFaceValueArray[0], rightFaceValueArray[-1], deltax,
-                                                               deltaT,
-                                                               flux(a, leftFaceValueArray[0]),
-                                                               flux(a, rightFaceValueArray[-1]),
-                                                               mesh.connectivityData.cells[0].calculations.faceNormals[
-                                                                   0])
-                numericalFluxArray[0][1] = lax_friedrichs_flux(rightFaceValueArray[0], leftFaceValueArray[1], deltax,
-                                                               deltaT,
-                                                               flux(a, rightFaceValueArray[0]),
-                                                               flux(a, leftFaceValueArray[1]),
-                                                               mesh.connectivityData.cells[0].calculations.faceNormals[
-                                                                   1])
-                numericalFluxArray[-1][0] = lax_friedrichs_flux(leftFaceValueArray[-1], rightFaceValueArray[-2], deltax,
-                                                                deltaT,
-                                                                flux(a, leftFaceValueArray[-1]),
-                                                                flux(a, rightFaceValueArray[-2]),
-                                                                mesh.connectivityData.cells[-1].calculations.faceNormals[
-                                                                    0])
-                numericalFluxArray[-1][1] = lax_friedrichs_flux(rightFaceValueArray[-1], leftFaceValueArray[0], deltax,
-                                                                deltaT,
-                                                                flux(a, rightFaceValueArray[-1]),
-                                                                flux(a, leftFaceValueArray[0]),
-                                                                mesh.connectivityData.cells[-1].calculations.faceNormals[
-                                                                    1])
-            else:
-                raise NotImplementedError
+    """ Global stiffness matrix """
+    stiffnessMatrices = np.zeros_like(globalDiag)
 
-        elif boundaryConditions == "Neumann":
-            """ Set Neumann boundary conditions, Lax Friedrichs flux """
-            numericalFluxArray[0][0] = lax_friedrichs_flux(leftFaceValueArray[0], leftFaceValueArray[0], deltax,
-                                                           deltaT,
-                                                           flux(a, leftFaceValueArray[0]),
-                                                           flux(a, leftFaceValueArray[0]),
-                                                           mesh.connectivityData.cells[0].calculations.faceNormals[0]
-                                                           )
-            numericalFluxArray[0][1] = lax_friedrichs_flux(rightFaceValueArray[0], leftFaceValueArray[1], deltax,
-                                                           deltaT,
-                                                           flux(a, rightFaceValueArray[0]),
-                                                           flux(a, leftFaceValueArray[1]),
-                                                           mesh.connectivityData.cells[0].calculations.faceNormals[1]
-                                                           )
-            numericalFluxArray[-1][0] = lax_friedrichs_flux(leftFaceValueArray[-1], rightFaceValueArray[-2], deltax,
-                                                            deltaT,
-                                                            flux(a, leftFaceValueArray[-1]),
-                                                            flux(a, rightFaceValueArray[-2]),
-                                                            mesh.connectivityData.cells[-1].calculations.faceNormals[0]
-                                                            )
-            numericalFluxArray[-1][1] = lax_friedrichs_flux(rightFaceValueArray[-1], rightFaceValueArray[-1], deltax,
-                                                            deltaT,
-                                                            flux(a, rightFaceValueArray[-1]),
-                                                            flux(a, rightFaceValueArray[-1]),
-                                                            mesh.connectivityData.cells[-1].calculations.faceNormals[1]
-                                                            )
-        else:
-            raise NotImplementedError
+    """ Global Laplacian matrix """
+    laplacian = np.zeros_like(globalDiag)
 
-        """ Calculate numerical fluxes for internal faces, qleft is always on the left side of a face instead """
-        if numerical_flux == upwind_flux:
-            for i in range(nCells - 2):
-                numericalFluxArray[i + 1][0] = upwind_flux(leftFaceValueArray[i + 1], rightFaceValueArray[i], a,
-                                                           mesh.connectivityData.cells[0].calculations.faceNormals[0])
-                numericalFluxArray[i + 1][1] = upwind_flux(rightFaceValueArray[i + 1], leftFaceValueArray[i + 2], a,
-                                                           mesh.connectivityData.cells[0].calculations.faceNormals[1])
-        elif numerical_flux == lax_friedrichs_flux:
-            for i in range(nCells - 2):
-                numericalFluxArray[i + 1][0] = lax_friedrichs_flux(leftFaceValueArray[i + 1], rightFaceValueArray[i],
-                                                                   deltax, deltaT, flux(a, leftFaceValueArray[i + 1]),
-                                                                   flux(a, rightFaceValueArray[i]),
-                                                                   mesh.connectivityData.cells[
-                                                                       i + 1].calculations.faceNormals[0])
-                numericalFluxArray[i + 1][1] = lax_friedrichs_flux(rightFaceValueArray[i + 1],
-                                                                   leftFaceValueArray[i + 2],
-                                                                   deltax, deltaT, flux(a, rightFaceValueArray[i + 1]),
-                                                                   flux(a, leftFaceValueArray[i + 2]),
-                                                                   mesh.connectivityData.cells[
-                                                                        i + 1].calculations.faceNormals[1])
-        else:
-            raise NotImplementedError
+    """ Global SIP matrix, x4 [P1 + 1, P1 + 1] blocks from each surface integral """
+    sipMatrices = np.zeros_like(globalDiag)
 
-        """ Initialise new solution coefficients """
-        uCoeffsNew = np.zeros((nCells, P1 + 1, nVars))
+    """ Global RHS coefficients """
+    fCoeffsGlobal = np.zeros((nCells, P1 + 1))
 
-        """ Go through all cells """
-        for i in range(nCells):
-            """ Backward transformation from coefficient space to physical space """
-            mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
-                mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
-            """ Flux values at quadrature points in the cell """
-            fluxValues = np.array([flux(a, q) for q in mesh.connectivityData.cells[i].solnCell.uPhysical])
-            """ Flux coefficients vector in coefficient space, f hat = (M)^-1 B^T W f """
-            fluxCoeffs = forwardTransform(mesh, fluxValues, i)
-            # f0Coeffs = np.matmul(np.linalg.inv(mesh.connectivityData.cells[i].GetMassMatrix()),
-            #                      np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix.transpose(),
-            #                                mesh.connectivityData.cells[i].paramSeg.weights *
-            #                                abs(mesh.connectivityData.cells[i].geomCell.detJacobian) *
-            #                                numericalFluxArray[i][0].reshape(-1, 1).transpose()))
-            # f1Coeffs = np.matmul(np.linalg.inv(mesh.connectivityData.cells[i].GetMassMatrix()),
-            #                      np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix.transpose(),
-            #                                mesh.connectivityData.cells[i].paramSeg.weights *
-            #                                abs(mesh.connectivityData.cells[i].geomCell.detJacobian) *
-            #                                numericalFluxArray[i][1].reshape(-1, 1).transpose()))
-            # divFlux = np.matmul(np.linalg.inv(mesh.connectivityData.cells[i].GetMassMatrix()),
-            #                     (np.matmul(massMatrixforF0, f0Coeffs) +
-            #                      np.matmul(massMatrixforF1, f1Coeffs) -
-            #                      np.matmul(mesh.connectivityData.cells[i].GetStiffnessMatrix(), fluxCoeffs)))
-            divFlux = np.matmul(mesh.connectivityData.cells[i].invMassMatrix,
-                                (np.matmul(basisMatrixforF0.transpose(),
-                                           numericalFluxArray[i][0].reshape(-1, 1).transpose()) +
-                                 np.matmul(basisMatrixforF1.transpose(),
-                                           numericalFluxArray[i][1].reshape(-1, 1).transpose()) -
-                                 np.matmul(mesh.connectivityData.cells[i].stiffnessMatrix, fluxCoeffs)))
-            uCoeffsNew[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs - deltaT * divFlux
+    """ Penalty factor, 10 to 20 in paper """
+    eta = (P1 ** 2) * (1.0 / deltax)
 
-        """ c-1, c, c+1, periodic """
-        minmod(uCoeffsNew[-1], uCoeffsNew[0], uCoeffsNew[1], mesh.connectivityData.cells[0].solnCell.uCoeffs)
-        minmod(uCoeffsNew[-2], uCoeffsNew[-1], uCoeffsNew[0], mesh.connectivityData.cells[-1].solnCell.uCoeffs)
-        for i in range(nCells - 2):
-            minmod(uCoeffsNew[i], uCoeffsNew[i + 1], uCoeffsNew[i + 2],
-                   mesh.connectivityData.cells[i + 1].solnCell.uCoeffs)
+    """ Global solution coefficients """
+    u = np.block([
+        [mesh.connectivityData.cells[i].solnCell.uCoeffs] for i in range(nCells)
+    ])
+    uCoeffsGlobal = np.empty_like(u)
 
-        """ No limiter solution """
-        # for i in range(nCells):
-        #     mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
+    """ Domain boundary condition contributions """
+    # Dirichlet or Periodic contributions at both ends
+    sipMatrices[0][0] = \
+        sipFluxBoundary(mesh.connectivityData.cells[0], basisMatrixforF0, derivMatrixforF0,
+                        mesh.connectivityData.cells[0].calculations.faceNormals[0])
 
-    """ Plot """
-    pltPhysical = np.zeros((nCells, nCoords, nVars))
+    sipMatrices[-1][-1] = \
+        sipFluxBoundary(mesh.connectivityData.cells[-1], basisMatrixforF1, derivMatrixforF1,
+                        mesh.connectivityData.cells[-1].calculations.faceNormals[1])
+
+    """ Dirichlet contributions from SIP method, came from LHS hence kappa needed """
+    if boundaryConditions == "Dirichlet":
+        fCoeffsGlobal[0] += kappa * (- g_d_left * mesh.connectivityData.cells[0].calculations.faceNormals[0] *
+                                     mesh.connectivityData.cells[0].geomCell.geometry.dxi1dx1 *
+                                     derivMatrixforF0[:, :, 0] + eta * g_d_left * basisMatrixforF0).reshape(-1)
+
+        fCoeffsGlobal[-1] += kappa * (- g_d_right * mesh.connectivityData.cells[-1].calculations.faceNormals[1] *
+                                      mesh.connectivityData.cells[-1].geomCell.geometry.dxi1dx1 *
+                                      derivMatrixforF1[:, :, 0] + eta * g_d_right * basisMatrixforF1).reshape(-1)
+
+    if boundaryConditions == "Periodic":
+        """ Upwind """
+        globalOffDiag[-1][0] -= a * np.matmul(basisMatrixforF0.transpose(), basisMatrixforF1)
+
+        """ Central flux """
+        # globalOffDiag[-1][0] -= (a / 2) * np.matmul(basisMatrixforF0.transpose(), basisMatrixforF1)
+        # globalOffDiag[0][-1] += (a / 2) * np.matmul(basisMatrixforF1.transpose(), basisMatrixforF0)
+
+    """ Populate internal faces -> surface integral values for off-diagonal block coefficients """
+    for i in range(nCells - 1):
+        """ Upwind """
+        globalOffDiag[i][i + 1] -= a * np.matmul(basisMatrixforF0.transpose(), basisMatrixforF1)
+
+        """ Central flux """
+        # globalOffDiag[i][i + 1] -= (a / 2) * np.matmul(basisMatrixforF0.transpose(), basisMatrixforF1)
+        # globalOffDiag[i + 1][i] += (a / 2) * np.matmul(basisMatrixforF1.transpose(), basisMatrixforF0)
+
+        temp1, temp2, temp3, temp4 = \
+            sipFlux(mesh.connectivityData.cells[i], mesh.connectivityData.cells[i + 1],
+                    basisMatrixforF1, basisMatrixforF0, derivMatrixforF1, derivMatrixforF0,
+                    mesh.connectivityData.cells[i].calculations.faceNormals[1])
+        sipMatrices[i][i] += temp1
+        sipMatrices[i][i + 1] += temp2
+        sipMatrices[i + 1][i] += temp3
+        sipMatrices[i + 1][i + 1] += temp4
+
+    """ Go through all cells """
     for i in range(nCells):
-        pltPhysical[i] = np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix,
-                                   mesh.connectivityData.cells[i].solnCell.uCoeffs)
+        laplacian[i][i] = mesh.connectivityData.cells[i].laplacianMatrix
+        massMatrices[i][i] = mesh.connectivityData.cells[i].massMatrix
+        stiffnessMatrices[i][i] = -a * mesh.connectivityData.cells[i].stiffnessMatrix
 
-    pltCoords = np.array([mesh.connectivityData.cells[i].GetQuadratureCoords for i in range(nCells)]).reshape(-1)
-    plt.plot(pltCoords, pltPhysical[:, :, 0].reshape(-1))
-    # plt.rc('axes', linewidth=1.25)
-    # plt.xticks([-1, 0, 1])
-    # plt.tick_params(axis='x', direction='in', pad=5)
-    # plt.yticks([-1, 0, 1])
-    # plt.tick_params(axis='y', direction='in', pad=5)
-    plt.grid()
-    plt_name = test_case + "_" + "P" + str(P1) + "_" + str(endTime)
-    plt.savefig(plt_name + '_limited.png', dpi=100)
-    # np.savetxt(plt_name + "_coords.dat", pltCoords, delimiter=',')
-    # np.savetxt(plt_name + "_values.dat", pltPhysical[:, :, 0].reshape(-1), delimiter=',')
-    plt.show()
+        tempf = forcing * np.ones((nCoords, nVars))
+
+        fCoeffsGlobal[i] += np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix.transpose(),
+                                      tempf * mesh.connectivityData.cells[i].paramSeg.weights * \
+                                      abs(mesh.connectivityData.cells[i].geomCell.detJacobian)).reshape(-1)
+
+        """ Upwind """
+        globalDiag[i][i] += a * np.matmul(basisMatrixforF1.transpose(), basisMatrixforF1)
+
+        """ Central flux """
+        # globalDiag[i][i] += (a / 2) * (np.matmul(basisMatrixforF1.transpose(), basisMatrixforF1) -
+        #                                np.matmul(basisMatrixforF0.transpose(), basisMatrixforF0))
+
+    """ Row runs first then column !! """
+    A = laplacian + sipMatrices
+    A = np.block([
+        [A[j][i] for j in range(nCells)] for i in range(nCells)
+    ])
+    massMatrices = np.block([
+        [massMatrices[j][i] for j in range(nCells)] for i in range(nCells)
+    ])
+    globalDiag = np.block([
+        [globalDiag[j][i] for j in range(nCells)] for i in range(nCells)
+    ])
+    stiffnessMatrices = np.block([
+        [stiffnessMatrices[j][i] for j in range(nCells)] for i in range(nCells)
+    ])
+    globalOffDiag = np.block([
+        [globalOffDiag[j][i] for j in range(nCells)] for i in range(nCells)
+    ])
+    f = np.block([
+        [fCoeffsGlobal[i]] for i in range(nCells)
+    ])
+
+    time_loop = True
+    """ Calculate time-step size """
+    if abs(endTime - 0.) < 1e-6:  # no time derivative, pure second-order solver
+        M = np.zeros_like(massMatrices)
+        time_loop = False
+    else:
+        deltaT = CFL * deltax / a
+        if abs(a - 0.) < 1e-6:  # no advection, pure diffusion
+            deltaT = 0.1
+        M = massMatrices / deltaT
+
+    globalMatrix = M + globalDiag + stiffnessMatrices + globalOffDiag + kappa * A
+    invGlobalMatrix = np.linalg.inv(globalMatrix)
+    RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
+
+    if time_loop:
+        """ Start time-loop """
+        while endTime - time > 1e-10:
+
+            if boundaryConditions == "Periodic":
+                """ Periodic SIP is just a dynamic Dirichlet BC """
+                u_l = np.matmul(basisMatrixforF1, u.reshape(nCells, P1 + 1)[-1].reshape(-1, 1))
+                u_r = np.matmul(basisMatrixforF0, u.reshape(nCells, P1 + 1)[0].reshape(-1, 1))
+                # Revisit if Advection Diffusion equation has an inhomogeneous forcing function, has to +=
+                fCoeffsGlobal[0] = kappa * (- u_l * mesh.connectivityData.cells[0].calculations.faceNormals[0] *
+                                            mesh.connectivityData.cells[0].geomCell.geometry.dxi1dx1 *
+                                            derivMatrixforF0[:, :, 0] + eta * u_l * basisMatrixforF0).reshape(-1)
+
+                fCoeffsGlobal[-1] = kappa * (- u_r * mesh.connectivityData.cells[-1].calculations.faceNormals[1] *
+                                             mesh.connectivityData.cells[-1].geomCell.geometry.dxi1dx1 *
+                                             derivMatrixforF1[:, :, 0] + eta * u_r * basisMatrixforF1).reshape(-1)
+                f = np.block([
+                    [fCoeffsGlobal[i]] for i in range(nCells)
+                ])
+                """ Initialise new RHS coefficients """
+                RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
+
+            uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)
+
+            # if abs(time - 0.25) < 1e-6 or abs(time - 0.75) < 1e-6:
+            #     for i in range(nCells):
+            #         mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsGlobal.reshape(nCells, P1 + 1)[i].reshape(
+            #             -1, 1)
+            #     label = "{time:.1f}".format(time=time)
+            #     plotSolution(mesh, nCells, nCoords, nVars, test_case, P1, label)
+
+            u = uCoeffsGlobal
+
+            # Increment time
+            if time + deltaT > endTime:
+                deltaT = endTime - time
+            time += deltaT
+            print("Current time: " + str(time))
+
+    else:
+        uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)  # spsolve(A, RHS) for iterative methods
+
+    # np.set_printoptions(precision=2, suppress=True)
+    """ No limiter solution, unwrap global coefficients """
+    for i in range(nCells):
+        mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsGlobal.reshape(nCells, P1 + 1)[i].reshape(-1, 1)
+
+    plotSolution(mesh, nCells, nCoords, nVars, test_case, P1, endTime)

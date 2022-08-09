@@ -1,7 +1,7 @@
 """
 File: paramCell.py
 
-Description: Base class for a parametric cell. Contains constant data
+Description: Abstract base class for a parametric cell. Contains constant data
 """
 from abc import ABC, abstractmethod
 
@@ -13,15 +13,15 @@ class ParamCell(ABC):
 
     @property
     @abstractmethod
-    def p(self):
+    def p1(self):
         """
-        @:brief p: Polynomial order in the xi_1 direction
+        @:brief p1: Polynomial order in the xi_1 direction
         """
         pass
 
-    @p.setter
+    @p1.setter
     @abstractmethod
-    def p(self, value):
+    def p1(self, value):
         return None
 
     @property

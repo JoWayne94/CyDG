@@ -95,7 +95,7 @@ class DgMesh:
         nPoints = int(file[0])
 
         # Initialise the end result: array of points and point IDs
-        pointsArray = np.empty((nPoints, ndims), dtype=float)  # 1 for 1D, 2 for 2D, 3 for 3D
+        pointsArray = np.empty((nPoints, ndims), dtype=float)
         pointLabelsArray = np.empty(nPoints, dtype=int)
 
         # Variable used to know in which point the file is
@@ -112,7 +112,7 @@ class DgMesh:
             # Assign coordinates to array
             pointsArray[pointCounter][componentCounter] = component
 
-            if componentCounter == ndims - 1:  # 0 for 1D, 1 for 2D, 2 for 3D
+            if componentCounter == ndims - 1:
                 componentCounter = 0
                 pointCounter += 1
             else:
@@ -268,7 +268,7 @@ class DgMesh:
         a_set = set(a)
         b_set = set(b)
         intersect = a_set.intersection(b_set)
-        if len(intersect) > self.connectivityData.nDims - 1:  # 0 for 1D, 1 for 2D
+        if len(intersect) > self.connectivityData.nDims - 1:
             return intersect
         pass
 

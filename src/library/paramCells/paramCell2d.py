@@ -30,9 +30,9 @@ class ParamCell2d(Cell, ABC):
 
     @property
     @abstractmethod
-    def q(self):
+    def p2(self):
         """
-        @:brief q: Polynomial order in the xi_2 direction
+        @:brief p2: Polynomial order in the xi_2 direction
         """
         pass
 

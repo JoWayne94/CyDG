@@ -12,26 +12,25 @@ class ParamQuad(Cell):
     """
     @:brief Subclass to represent a 2d quad cell in parametric space
     """
-    def __init__(self, quadrature, p, q):
+    def __init__(self, quadrature, p1, p2):
         """
         @:brief Main constructor
-        :param p:          Polynomial order in the xi_1 direction
-        :param q:          Polynomial order in the xi_2 direction
+        :param p1:         Polynomial order in the xi_1 direction
+        :param p2:         Polynomial order in the xi_2 direction
         :param quadrature: Type of quadrature selected
         """
-        # super().__init__(quadrature, p, q, nNodesP, nNodesQ)
-        self.P = p
-        self.Q = q
+        self.P1 = p1
+        self.P2 = p2
         self.Quadrature = quadrature
         self.Zeros, self.Weights = self.GetQuadratureZerosWeights()
 
     @property
-    def p(self):
-        return self.P
+    def p1(self):
+        return self.P1
 
     @property
-    def q(self):
-        return self.Q
+    def p2(self):
+        return self.P2
 
     @property
     def quadrature(self):
@@ -52,8 +51,8 @@ class ParamQuad(Cell):
         :return: Quadrature point coordinates and weights
         """
         # Get quadrature zeros and weights from 1D
-        Segment1 = Segment(self.quadrature, self.p)
-        Segment2 = Segment(self.quadrature, self.q)
+        Segment1 = Segment(self.quadrature, self.p1)
+        Segment2 = Segment(self.quadrature, self.p2)
         qZeros1, qWeights1 = Segment1.GetQuadratureZerosWeights()
         qZeros2, qWeights2 = Segment2.GetQuadratureZerosWeights()
 

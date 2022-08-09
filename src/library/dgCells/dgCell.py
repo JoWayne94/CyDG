@@ -52,8 +52,7 @@ class DgCell(ABC):
         """
         :param V:           Cell volume
         :param cellCentre:  Cell centre
-        :param massMatrix:  Cellular mass matrix -> B^T W B
-        :param stiffnessMatrix: Cellular stiffness matrix -> d xi/d x (D B)^T W B
+        :param faceNormals: Face unit normal vectors
         """
         self.calculations.V = self.calculateCellVolume()
         self.calculations.cellCentre = self.calculateCellCentre()
@@ -69,7 +68,7 @@ class DgCell(ABC):
         # Initialise number of points that make up the cell
         nPointsInCell = 0
         # Initialise end result: (x, y) coordinates
-        result = np.zeros(len(self.geomData.points[0]))  # 1 for 1D, 2 for 2D, 3 for 3D
+        result = np.zeros(len(self.geomData.points[0]))
 
         # For every point in cell
         for i in range(len(self.geomData.pointLabels)):
@@ -87,7 +86,7 @@ class DgCell(ABC):
     @abstractmethod
     def calculateCellVolume(self):
         """
-        @:brief Calculates area of a polygon using the Shoelace formula
+        @:brief Calculates volume of a cell
         :return: Volume of the cell
         """
         pass
@@ -96,6 +95,6 @@ class DgCell(ABC):
     def calculateFaceNormals(self):
         """
         @:brief Calculate unit normal vector of faces
-        :return: Unit normal vector ([number of faces, scalar])
+        :return: Unit normal vector ([number of faces, number of face Gauss points, vector])
         """
         pass

@@ -52,22 +52,22 @@ def populatePointCoords(r, coord, N, delta, max_, min_, gp):
 if __name__ == '__main__':
 
     """ x min """
-    x_min = 0.0
+    x_min = 0.
 
     """ y min """
-    y_min = 0.0
+    y_min = 0.
 
     """ x max """
-    x_max = 1.0
+    x_max = 1.
 
     """ y max """
-    y_max = 1.0
+    y_max = 0.
 
     """ No. of cells in x-direction """
-    Nx = 10
+    Nx = 50
 
     """ No. of cells in y-direction """
-    Ny = 10
+    Ny = 1
 
     """ Geometric progression ratio in x-direction """
     rx = 1.0
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     """ Geometric progression ratio in y-direction """
     ry = 1.0
 
-    save_dat = False  # save points and cells data
+    save_dat = True  # save points and cells data
     gpx = "single_gp"  # single or double geometric progression
     gpy = "single_gp"
 
@@ -133,7 +133,8 @@ if __name__ == '__main__':
             f.write(str(N) + '\n')
             f.write('( \n')
             for i in range(N):
-                f.write('(' + str(listPx[i % (Nx + 1)]) + ' ' + str(listPy[i // (Nx + 1)]) + ') \n')
+                f.write('(' + "{:.5f}".format(listPx[i % (Nx + 1)]) + ' ' + "{:.5f}".format(listPy[i // (Nx + 1)]) +
+                        ') \n')
             f.write(') \n')
 
     cells = np.empty((nCells, 4), dtype=int)
