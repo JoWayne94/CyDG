@@ -167,10 +167,7 @@ if __name__ == '__main__':
     bottom_boundary = None
     right_boundary = None
     top_boundary = None
-    g_d_left = None
-    g_d_right = None
-    g_d_top = None
-    g_d_bottom = None
+    g_d = None
     numerical_flux = upwind_flux
 
     if test_case == "pure_advection_gaussian_wave":
@@ -190,7 +187,7 @@ if __name__ == '__main__':
             # Initial condition for gaussian wave
             for coords in range(nCoords):
                 mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
-                    np.exp(-4 * (mesh.connectivityData.cells[i].GetQuadratureCoords[:, coords][0] ** 2 +
+                    np.exp(-8 * (mesh.connectivityData.cells[i].GetQuadratureCoords[:, coords][0] ** 2 +
                                  mesh.connectivityData.cells[i].GetQuadratureCoords[:, coords][1] ** 2))
 
             mesh.connectivityData.cells[i].solnCell.uCoeffs = \
@@ -227,10 +224,7 @@ if __name__ == '__main__':
                 forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
 
     elif test_case == "Poisson":
-        g_d_left = zeroDirichletBCs
-        g_d_right = zeroDirichletBCs
-        g_d_top = zeroDirichletBCs
-        g_d_bottom = zeroDirichletBCs
+        g_d = zeroDirichletBCs
         left_boundary = -1.
         bottom_boundary = -1.
         right_boundary = 1.
@@ -249,9 +243,7 @@ if __name__ == '__main__':
         kappa = 0.05
         forcing = 0.
         point_source = 16.67
-        g_d_left = analyticDirichletBCs
-        g_d_top = analyticDirichletBCs
-        g_d_bottom = analyticDirichletBCs
+        g_d = analyticDirichletBCs
 
         left_boundary = 0.05
         bottom_boundary = -0.5
@@ -335,146 +327,86 @@ if __name__ == '__main__':
     upwindNeighbourFaces = [2, 1]
     upwindOwnerFaces = [0, 3]  # receiving flow from bottom and left
 
-    """ Bottom domain boundary """
-    if bottom_BCs == "Dirichlet":
-        for i in range(len(boundaryIDs[0])):
-            """ SIP """
-            sipMatrices[boundaryIDs[0][i]][boundaryIDs[0][i]] = \
-                sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[0][i]],
-                                mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0])
-            """ Varying x-coordinates of face Gauss points """
-            x_coords = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].geomCell.geometry. \
-                parametricMapping()
+    BCs = [bottom_BCs, right_BCs, top_BCs, left_BCs]
+    BC_coord = [bottom_boundary, right_boundary, top_boundary, left_boundary]
+    n_list = [1, -1, -1, 1]
+    x = None
+    y = None
+    dxi1dx = None
+    dxi2dx = None
 
-            dxi1dx2 = mesh.connectivityData.cells[boundaryIDs[0][i]].geomCell.invJacobian[:, :, 0][:, 1]
-            dxi2dx2 = mesh.connectivityData.cells[boundaryIDs[0][i]].geomCell.invJacobian[:, :, 1][:, 1]
+    """ Iterate through domain boundaries """
+    for j in range(4):
+        if BCs[j] == "Dirichlet":
+            for i in range(len(boundaryIDs[j])):
+                """ SIP """
+                sipMatrices[boundaryIDs[j][i]][boundaryIDs[j][i]] = \
+                    sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[j][i]],
+                                    mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j])
+                """ Varying x and y-coordinates of face Gauss points """
+                if j == 0 or j == 2:
+                    x = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.geometry. \
+                        parametricMapping()
+                    y = BC_coord[j]
 
-            weight_matrix = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].paramSeg.weights * \
-                            abs(mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].geomCell.detJacobian)
-            tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].faceBasis
-            tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].faceDeriv
-            term1 = np.matmul((dxi1dx2 * tmpOwnerDeriv[:, :, 0] + dxi2dx2 * tmpOwnerDeriv[:, :, 1]).transpose(),
-                              weight_matrix * g_d_bottom(x_coords, bottom_boundary))
-            term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d_bottom(x_coords, bottom_boundary))
+                    dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 1]
+                    dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 1]
+                elif j == 1 or j == 3:
+                    y = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.geometry. \
+                        parametricMapping()
+                    x = BC_coord[j]
 
-            fCoeffsGlobal[boundaryIDs[0][i]] += kappa * (term1 + term2).reshape(-1)
+                    dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 0]
+                    dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 0]
+                else:
+                    raise NotImplementedError
 
-    if bottom_BCs == "Periodic":
-        for i in range(len(boundaryIDs[0])):
-            """ SIP """
-            sipMatrices[boundaryIDs[0][i]][boundaryIDs[0][i]] = \
-                sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[0][i]],
-                                mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0])
-            """ Upwind """
-            tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[upwindOwnerFaces[0]].faceBasis
-            vel = np.array(
-                [np.matmul(a, mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[upwindOwnerFaces[0]].
-                           unitNormal[k].transpose())
-                 for k in range(len(mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[upwindOwnerFaces[0]].
-                                    paramSeg.zeros))])
-            tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[upwindNeighbourFaces[0]]. \
-                faceBasis
+                weight_matrix = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].paramSeg.weights * \
+                                abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.detJacobian)
+                tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
+                tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceDeriv
+                term1 = n_list[j] * np.matmul(
+                    (dxi1dx * tmpOwnerDeriv[:, :, 0] + dxi2dx * tmpOwnerDeriv[:, :, 1]).transpose(),
+                    weight_matrix * g_d(x, y))
+                term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d(x, y))
 
-            faceMatrix = np.matmul(tmpOwnerBasis.transpose(), tmpNeighbourBasis * vel.reshape(-1, 1) *
-                                   mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[upwindOwnerFaces[0]].
-                                   paramSeg.weights *
-                                   abs(mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[upwindOwnerFaces[0]].
-                                       geomCell.detJacobian))
-            globalOffDiag[boundaryIDs[2][i]][boundaryIDs[0][i]] += faceMatrix
+                fCoeffsGlobal[boundaryIDs[j][i]] += kappa * (term1 + term2).reshape(-1)
 
-    """ Right domain boundary """
-    if right_BCs == "Dirichlet":
-        for i in range(len(boundaryIDs[1])):
-            sipMatrices[boundaryIDs[1][i]][boundaryIDs[1][i]] = \
-                sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[1][i]],
-                                mesh.connectivityData.cells[boundaryIDs[1][i]].facesCell.F[1])
+                """ Upwind """
+                vel = np.array(
+                    [np.matmul(a, mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                               unitNormal[k].transpose())
+                     for k in range(len(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                        paramSeg.zeros))])
 
-    """ Top domain boundary """
-    if top_BCs == "Dirichlet":
-        for i in range(len(boundaryIDs[2])):
-            sipMatrices[boundaryIDs[2][i]][boundaryIDs[2][i]] = \
-                sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[2][i]],
-                                mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2])
+                faceMatrix = np.matmul(tmpOwnerBasis.transpose(), g_d(x, y) * vel.reshape(-1, 1) *
+                                       mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                       paramSeg.weights *
+                                       abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                           geomCell.detJacobian))
+                fCoeffsGlobal[boundaryIDs[j][i]] -= faceMatrix.reshape(-1)
 
-            x_coords = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].geomCell.geometry. \
-                parametricMapping()
+        if BCs[j] == "Periodic":
+            for i in range(len(boundaryIDs[j])):
+                """ SIP """
+                sipMatrices[boundaryIDs[j][i]][boundaryIDs[j][i]] = \
+                    sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[j][i]],
+                                    mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j])
+                """ Upwind """
+                tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
+                vel = np.array(
+                    [np.matmul(a, mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                               unitNormal[k].transpose())
+                     for k in range(len(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                        paramSeg.zeros))])
+                tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[j - 2][i]].facesCell.F[j - 2].faceBasis
 
-            dxi1dx2 = mesh.connectivityData.cells[boundaryIDs[2][i]].geomCell.invJacobian[:, :, 0][:, 1]
-            dxi2dx2 = mesh.connectivityData.cells[boundaryIDs[2][i]].geomCell.invJacobian[:, :, 1][:, 1]
-
-            weight_matrix = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].paramSeg.weights * \
-                            abs(mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].geomCell.detJacobian)
-            tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].faceBasis
-            tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].faceDeriv
-            term1 = -np.matmul((dxi1dx2 * tmpOwnerDeriv[:, :, 0] + dxi2dx2 * tmpOwnerDeriv[:, :, 1]).transpose(),
-                               weight_matrix * g_d_top(x_coords, top_boundary))
-            term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d_top(x_coords, top_boundary))
-
-            fCoeffsGlobal[boundaryIDs[2][i]] += kappa * (term1 + term2).reshape(-1)
-
-    """ Left domain boundary """
-    if left_BCs == "Dirichlet":
-        for i in range(len(boundaryIDs[3])):
-            """ SIP """
-            sipMatrices[boundaryIDs[3][i]][boundaryIDs[3][i]] = \
-                sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[3][i]],
-                                mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3])
-
-            y_coords = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].geomCell.geometry. \
-                parametricMapping()
-
-            dxi1dx1 = mesh.connectivityData.cells[boundaryIDs[3][i]].geomCell.invJacobian[:, :, 0][:, 0]
-            dxi2dx1 = mesh.connectivityData.cells[boundaryIDs[3][i]].geomCell.invJacobian[:, :, 1][:, 0]
-
-            weight_matrix = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].paramSeg.weights * \
-                            abs(mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].geomCell.detJacobian)
-            tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].faceBasis
-            tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].faceDeriv
-            term1 = np.matmul((dxi1dx1 * tmpOwnerDeriv[:, :, 0] + dxi2dx1 * tmpOwnerDeriv[:, :, 1]).transpose(),
-                              weight_matrix * g_d_left(left_boundary, y_coords))
-            term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d_left(left_boundary, y_coords))
-
-            fCoeffsGlobal[boundaryIDs[3][i]] += kappa * (term1 + term2).reshape(-1)
-
-            """ Upwind """
-            tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].faceBasis
-            vel = np.array(
-                [np.matmul(a, mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].
-                           unitNormal[k].transpose())
-                 for k in range(len(mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].
-                                    paramSeg.zeros))])
-            y_coords = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].geomCell. \
-                geometry.parametricMapping()
-
-            faceMatrix = np.matmul(tmpOwnerBasis.transpose(), g_d_left(left_boundary, y_coords) * vel.reshape(-1, 1) *
-                                   mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].
-                                   paramSeg.weights *
-                                   abs(mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].
-                                       geomCell.detJacobian))
-            fCoeffsGlobal[boundaryIDs[3][i]] -= faceMatrix.reshape(-1)
-
-    if left_BCs == "Periodic":
-        for i in range(len(boundaryIDs[3])):
-            """ SIP """
-            sipMatrices[boundaryIDs[3][i]][boundaryIDs[3][i]] = \
-                sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[3][i]],
-                                mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3])
-            """ Upwind """
-            tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].faceBasis
-            vel = np.array(
-                [np.matmul(a, mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].
-                           unitNormal[k].transpose())
-                 for k in range(len(mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].
-                                    paramSeg.zeros))])
-            tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[1][i]].facesCell.F[upwindNeighbourFaces[1]]. \
-                faceBasis
-
-            faceMatrix = np.matmul(tmpOwnerBasis.transpose(), tmpNeighbourBasis * vel.reshape(-1, 1) *
-                                   mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].
-                                   paramSeg.weights *
-                                   abs(mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[upwindOwnerFaces[1]].
-                                       geomCell.detJacobian))
-            globalOffDiag[boundaryIDs[1][i]][boundaryIDs[3][i]] += faceMatrix
+                faceMatrix = np.matmul(tmpOwnerBasis.transpose(), tmpNeighbourBasis * vel.reshape(-1, 1) *
+                                       mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                       paramSeg.weights *
+                                       abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                           geomCell.detJacobian))
+                globalOffDiag[boundaryIDs[j - 2][i]][boundaryIDs[j][i]] += faceMatrix
 
     """ Populate internal values """
     for i in range(nCells):
@@ -596,106 +528,53 @@ if __name__ == '__main__':
         while endTime - time > 1e-10:
 
             if abs(record_time - time) < 1e-6:
-                save_data(mesh, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, frame_counter)
+                save_data(mesh, u, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, dims, frame_counter)
                 frame_counter += 1
                 record_time += 0.1
 
-            """ Left domain boundary """
-            if left_BCs == "Periodic":
-                for i in range(len(boundaryIDs[3])):
-                    tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[1][i]].facesCell.F[1].faceBasis
-                    g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[1][i]].reshape(-1, 1))
+            """ Iterate through domain boundaries """
+            for j in range(4):
+                if BCs[j] == "Periodic":
+                    for i in range(len(boundaryIDs[j])):
+                        tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[j - 2][i]].facesCell.F[j - 2]. \
+                            faceBasis
+                        g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[j - 2][i]].
+                                        reshape(-1, 1))
+                        if j == 0 or j == 2:
+                            dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 1]
+                            dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 1]
+                        if j == 1 or j == 3:
+                            dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 0]
+                            dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 0]
+                        else:
+                            raise NotImplementedError
 
-                    dxi1dx1 = mesh.connectivityData.cells[boundaryIDs[3][i]].geomCell.invJacobian[:, :, 0][:, 0]
-                    dxi2dx1 = mesh.connectivityData.cells[boundaryIDs[3][i]].geomCell.invJacobian[:, :, 1][:, 0]
+                        weight_matrix = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].paramSeg.weights\
+                                        * abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.
+                                              detJacobian)
+                        tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
+                        tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceDeriv
+                        term1 = n_list[j] * np.matmul(
+                            (dxi1dx * tmpOwnerDeriv[:, :, 0] + dxi2dx * tmpOwnerDeriv[:, :, 1]).transpose(),
+                            weight_matrix * g_d)
+                        term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
 
-                    weight_matrix = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].paramSeg.weights * \
-                                    abs(mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[
-                                            3].geomCell.detJacobian)
-                    tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].faceBasis
-                    tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].faceDeriv
-                    term1 = np.matmul((dxi1dx1 * tmpOwnerDeriv[:, :, 0] + dxi2dx1 * tmpOwnerDeriv[:, :, 1]).transpose(),
-                                      weight_matrix * g_d)
-                    term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
-
-                    fCoeffsGlobal[boundaryIDs[3][i]] = kappa * (term1 + term2).reshape(-1)
-
-            """ Bottom domain boundary """
-            if bottom_BCs == "Periodic":
-                for i in range(len(boundaryIDs[0])):
-                    tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].faceBasis
-                    g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[2][i]].reshape(-1, 1))
-
-                    dxi1dx2 = mesh.connectivityData.cells[boundaryIDs[0][i]].geomCell.invJacobian[:, :, 0][:, 1]
-                    dxi2dx2 = mesh.connectivityData.cells[boundaryIDs[0][i]].geomCell.invJacobian[:, :, 1][:, 1]
-
-                    weight_matrix = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].paramSeg.weights * \
-                                    abs(mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[
-                                            0].geomCell.detJacobian)
-                    tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].faceBasis
-                    tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].faceDeriv
-                    term1 = np.matmul((dxi1dx2 * tmpOwnerDeriv[:, :, 0] + dxi2dx2 * tmpOwnerDeriv[:, :, 1]).transpose(),
-                                      weight_matrix * g_d)
-                    term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
-
-                    fCoeffsGlobal[boundaryIDs[0][i]] = kappa * (term1 + term2).reshape(-1)
-
-            """ Right domain boundary """
-            if right_BCs == "Periodic":
-                for i in range(len(boundaryIDs[1])):
-                    tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[3][i]].facesCell.F[3].faceBasis
-                    g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[3][i]].reshape(-1, 1))
-
-                    dxi1dx1 = mesh.connectivityData.cells[boundaryIDs[1][i]].geomCell.invJacobian[:, :, 0][:, 0]
-                    dxi2dx1 = mesh.connectivityData.cells[boundaryIDs[1][i]].geomCell.invJacobian[:, :, 1][:, 0]
-
-                    weight_matrix = mesh.connectivityData.cells[boundaryIDs[1][i]].facesCell.F[1].paramSeg.weights * \
-                                    abs(mesh.connectivityData.cells[boundaryIDs[1][i]].facesCell.F[
-                                            1].geomCell.detJacobian)
-                    tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[1][i]].facesCell.F[1].faceBasis
-                    tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[1][i]].facesCell.F[1].faceDeriv
-                    term1 = -np.matmul(
-                        (dxi1dx1 * tmpOwnerDeriv[:, :, 0] + dxi2dx1 * tmpOwnerDeriv[:, :, 1]).transpose(),
-                        weight_matrix * g_d)
-                    term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
-
-                    fCoeffsGlobal[boundaryIDs[1][i]] = kappa * (term1 + term2).reshape(-1)
-
-            """ Top domain boundary """
-            if top_BCs == "Periodic":
-                for i in range(len(boundaryIDs[2])):
-                    tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[0][i]].facesCell.F[0].faceBasis
-                    g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[0][i]].reshape(-1, 1))
-
-                    dxi1dx2 = mesh.connectivityData.cells[boundaryIDs[2][i]].geomCell.invJacobian[:, :, 0][:, 1]
-                    dxi2dx2 = mesh.connectivityData.cells[boundaryIDs[2][i]].geomCell.invJacobian[:, :, 1][:, 1]
-
-                    weight_matrix = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].paramSeg.weights * \
-                                    abs(mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[
-                                            2].geomCell.detJacobian)
-                    tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].faceBasis
-                    tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[2][i]].facesCell.F[2].faceDeriv
-                    term1 = -np.matmul(
-                        (dxi1dx2 * tmpOwnerDeriv[:, :, 0] + dxi2dx2 * tmpOwnerDeriv[:, :, 1]).transpose(),
-                        weight_matrix * g_d)
-                    term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
-
-                    fCoeffsGlobal[boundaryIDs[2][i]] = kappa * (term1 + term2).reshape(-1)
+                        fCoeffsGlobal[boundaryIDs[j][i]] = kappa * (term1 + term2).reshape(-1)
 
             if bottom_BCs or right_BCs or top_BCs or left_BCs == "Periodic":
                 f = np.block([
                     [fCoeffsGlobal[i]] for i in range(nCells)
                 ])
 
-                RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
+            RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
 
             uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)
 
             u = uCoeffsGlobal
 
             """ No limiter solution """
-            for i in range(nCells):
-                mesh.connectivityData.cells[i].solnCell.uCoeffs = u.reshape(nCells, dims)[i].reshape(-1, 1)
+            # for i in range(nCells):
+            #     mesh.connectivityData.cells[i].solnCell.uCoeffs = u.reshape(nCells, dims)[i].reshape(-1, 1)
 
             # Increment time
             if time + deltaT > endTime:

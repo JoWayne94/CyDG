@@ -63,16 +63,24 @@ def sipFluxBoundary(cell_left, bleft, dleft, n):
     return sip_left
 
 
+def G(x, gamma_, z_):
+    return np.exp(- gamma_ * (x - z_) ** 2)
+
+
+def F(x, alpha_, b_):
+    return np.sqrt(max(1 - alpha_ ** 2 * (x - b_) ** 2, 0.))
+
+
 if __name__ == '__main__':
     """
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/100x0"
+    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/800x0"
     nDims = 1
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
-    P1 = 1
+    P1 = 3
     P2 = 0
     # Read in the mesh
     mesh = DgMesh.constructFromPolyMeshFolder(name, nDims)
@@ -98,13 +106,14 @@ if __name__ == '__main__':
     Set initial values using the first coefficients for constant state, or using physical values then 
     transform back to coefficient space
     """
-    test_case = "advection_diffusion_sine_wave"
+    test_case = "pure_advection_step_profile"
     a = 0.  # constant velocity
     kappa = 0.
     forcing = 0.
     g_d_left = None
     g_d_right = None
     numerical_flux = upwind_flux
+    exact_soln = np.empty((nCells, nCoords, nVars))
 
     if test_case == "pure_advection_sine_wave":
         a = 1.
@@ -139,6 +148,38 @@ if __name__ == '__main__':
             # Set physical values, no need * abs(mesh.connectivityData.cells[i].geomCell.detJacobian)
             mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
                 mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
+
+    elif test_case == "pure_advection_shu_test":
+        a = 1.
+        endTime = 2.0
+        flux = linearAdvFlux
+        boundaryConditions = "Periodic"
+
+        delta = 0.005
+        z = -0.7
+        gamma = np.log(2) / (36 * delta ** 2)
+        b = 0.5
+        alpha = 10
+
+        for i in range(nCells):
+            # Initial condition for shu test
+            for coords in range(nCoords):
+                x_coord = mesh.connectivityData.cells[i].GetQuadratureCoords[coords]
+                if -0.8 <= x_coord <= -0.6:
+                    mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
+                        (1/6) * (G(x_coord, gamma, z - delta) + G(x_coord, gamma, z + delta) + 4 * G(x_coord, gamma, z))
+                elif -0.4 <= x_coord <= -0.2:
+                    mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = 1.
+                elif 0. <= x_coord <= 0.2:
+                    mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = 1. - abs(10 * (x_coord - 0.1))
+                elif 0.4 <= x_coord <= 0.6:
+                    mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
+                        (1/6) * (F(x_coord, alpha, b - delta) + F(x_coord, alpha, b + delta) + 4 * F(x_coord, alpha, b))
+                else:
+                    mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = 0.
+
+            mesh.connectivityData.cells[i].solnCell.uCoeffs = \
+                forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
 
     elif test_case == "Laplace":
         g_d_left = 5.
@@ -210,6 +251,9 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
 
+    for i in range(nCells):
+        exact_soln[i] = mesh.connectivityData.cells[i].solnCell.uPhysical
+
     if a < 0:
         print("Advection velocity has to be positive for now.")
         raise ValueError
@@ -217,9 +261,7 @@ if __name__ == '__main__':
         print("Negative diffusivity will blow up the solution.")
         raise ValueError
 
-    plotSolution(mesh, nCells, nCoords, nVars, test_case, P1, 0.0)
-
-    CFL = 0.01
+    CFL = 1.0
     # Constant mesh size for now
     deltax = mesh.connectivityData.cells[0].calculations.V
 
@@ -352,6 +394,7 @@ if __name__ == '__main__':
         M = massMatrices / deltaT
 
     globalMatrix = M + globalDiag + stiffnessMatrices + globalOffDiag + kappa * A
+    print("Inverting global matrix.")
     invGlobalMatrix = np.linalg.inv(globalMatrix)
     RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
 
@@ -374,10 +417,10 @@ if __name__ == '__main__':
                 f = np.block([
                     [fCoeffsGlobal[i]] for i in range(nCells)
                 ])
-                """ Initialise new RHS coefficients """
-                RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
+            """ Initialise new RHS coefficients """
+            RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
 
-            uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)
+            uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)  # spsolve(globalMatrix, RHS)
 
             # if abs(time - 0.25) < 1e-6 or abs(time - 0.75) < 1e-6:
             #     for i in range(nCells):
@@ -401,5 +444,15 @@ if __name__ == '__main__':
     """ No limiter solution, unwrap global coefficients """
     for i in range(nCells):
         mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsGlobal.reshape(nCells, P1 + 1)[i].reshape(-1, 1)
+        mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
+            mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
 
-    plotSolution(mesh, nCells, nCoords, nVars, test_case, P1, endTime)
+    """ Plot solution """
+    directory = "/Users/jwtan/PycharmProjects/PyDG/data/ADR/"
+    plt_name = test_case + "_P" + str(P1) + "_T" + str(endTime) + "_N" + str(nCells)
+    title = "Rectangular function, final time = {0} s".format(str(endTime))
+    plotSolution(mesh, nCells, nCoords, nVars, P1, 0., 1., directory, exact_soln, "Upwind flux", title, plt_name,
+                 save=True)
+
+    """ Calculate L2 error """
+    calculateL2err(mesh, exact_soln, nCells)

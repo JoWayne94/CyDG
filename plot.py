@@ -8,34 +8,56 @@ import numpy as np
 from matplotlib.ticker import LinearLocator
 from src.library.paramCells.basis import *
 from src.library.geometries.quadrilateral import Quadrilateral as QuadGeom
-from scipy.special import kn
 
 
 # %%
+""" Read dat files and plot """
+N = [25, 50, 100, 200, 400, 800]
+line_style = ["o", "x", "^", "s", "*", "+"]
+fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=100)
+
+for i in range(6):
+    # Read in file
+    coords = open("/Users/jwtan/PycharmProjects/PyDG/data/ADR/pure_advection_sine_wave_P1_T1.0_N{0}_coords.dat".format(
+        str(N[i]))).read()
+    values = open("/Users/jwtan/PycharmProjects/PyDG/data/ADR/pure_advection_sine_wave_P1_T1.0_N{0}_values.dat".format(
+        str(N[i]))).read()
+
+    # Split the file into tokens
+    coords = coords.split()
+    values = values.split()
+    coords = [float(x) for x in coords]
+    values = [float(x) for x in values]
+
+    ax.plot(coords, values, linestyle="", marker=line_style[i], label="N = {0}".format(str(N[i])), markersize=1.75,
+            color="black")
+
+exact_x = np.linspace(0., 1., 100)
+exact_y = np.sin(2 * np.pi * exact_x)
+ax.plot(exact_x, exact_y, linestyle="-", linewidth=1.5, label="Exact solution", color="blue")
+ax.xaxis.set_major_formatter('{x:.01f}')
+ax.yaxis.set_major_formatter('{x:.01f}')
+ax.title.set_text("Sine wave, final time = 1.0 s")
+plt.grid()
+plt.legend()
+plt.savefig('/Users/jwtan/Desktop/dgProject/Plots/pure_advection_sine_wave_P1_T1.eps', dpi=1000)
+plt.show()
+
+
+# %%
+""" Plot velocity field """
 x = np.linspace(-1, 1, 15)
 y = np.linspace(-1, 1, 15)
 X, Y = np.meshgrid(x, y)
 U = -Y
 V = X
 
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(4.8, 4.8))
 q = ax.quiver(X, Y, U, V)
 ax.quiverkey(q, X=0.4, Y=1.05, U=1, label='Velocity field', labelpos='E')
-
-plt.show()
-
-
-# %%
-point_source = 16.67
-y = 0.5
-x = np.linspace(0.05, 4.05, 100)
-kappa = 0.05
-g_d = (point_source / (2 * np.pi * kappa)) * \
-              kn(0, (np.sqrt(x ** 2 + y ** 2)) / (2 * kappa)) * \
-              np.exp(x / (2 * kappa))
-
-plt.plot(x, g_d)
-
+ax.xaxis.set_major_formatter('{x:.01f}')
+ax.yaxis.set_major_formatter('{x:.01f}')
+plt.savefig("velocity_field", dpi=1000)
 plt.show()
 
 # %%
@@ -79,7 +101,7 @@ surf = ax.plot_surface(x2dnew, y2dnew, plotBase, cmap='coolwarm', linewidth=0, a
 color_tuple = (1.0, 1.0, 1.0, 0.0)
 
 # Customize the axes
-ax.set_xlim(2, 0)
+ax.set_xlim(1, 0)
 ax.set_ylim(0, 1)
 ax.xaxis.set_major_locator(LinearLocator(5))
 ax.yaxis.set_major_locator(LinearLocator(5))

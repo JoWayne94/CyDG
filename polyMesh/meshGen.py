@@ -64,7 +64,7 @@ if __name__ == '__main__':
     y_max = 0.
 
     """ No. of cells in x-direction """
-    Nx = 50
+    Nx = 800
 
     """ No. of cells in y-direction """
     Ny = 1

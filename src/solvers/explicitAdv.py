@@ -1,7 +1,7 @@
 """
-File: ADR.py
+File: explicitAdv.py
 
-Description: Solve ADR equations in 1D with forward Euler time-stepping
+Description: Solve the scalar advection equation in 1D with forward Euler time-stepping
 """
 import numpy as np
 import math
@@ -63,7 +63,7 @@ def central_flux(qleft, qright, v, n, left_flux, right_flux):
 
 def local_lax_friedrichs_flux(qleft, qright, v, n, left_flux, right_flux):
     """
-    @:brief Local Lax-Friedrichs flux
+    @:brief Local Lax-Friedrichs flux, only for linear advection
     :param qleft:       Left state value
     :param qright:      Right state value
     :param v:           Constant advection speed, or dx / dt
@@ -72,7 +72,7 @@ def local_lax_friedrichs_flux(qleft, qright, v, n, left_flux, right_flux):
     :param n:           Unit normal vector
     :return: Numerical flux value
     """
-    return n * (0.5 * abs(v) * (qleft - qright) + 0.5 * (left_flux + right_flux))
+    return n * (0.5 * v * (qleft - qright) + 0.5 * (left_flux + right_flux))
 
 
 def forwardTransform(meshObj, physicalValues, cell):
@@ -127,11 +127,11 @@ if __name__ == '__main__':
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/10x0"
+    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/50x0"
     nDims = 1
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
-    P1 = 0
+    P1 = 1
     P2 = 0
     # Read in the mesh
     mesh = DgMesh.constructFromPolyMeshFolder(name, nDims)
@@ -158,9 +158,10 @@ if __name__ == '__main__':
     Set initial values using the first coefficients for constant state, or using physical values then 
     transform back to coefficient space
     """
-    test_case = "step"
+    test_case = "sine"
     a = 1.0  # constant velocity
     numerical_flux = upwind_flux
+    exact_soln = np.empty((nCells, nCoords, nVars))
 
     if test_case == "sine":
         endTime = 1.0
@@ -179,6 +180,22 @@ if __name__ == '__main__':
     elif test_case == "step":
         uL = 0.0
         uR = 1.0
+        xD = 0.5
+        endTime = 1.0
+        flux = linearAdvFlux
+        boundaryConditions = "Periodic"
+
+        for i in range(nCells):
+            # Initial condition for step function
+            mesh.connectivityData.cells[i].solnCell.uCoeffs[0] = np.array(
+                [uR if coords <= xD else uL for coords in mesh.connectivityData.cells[i].calculations.cellCentre])
+            # Set physical values
+            mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
+                mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
+
+    elif test_case == "top_hat":
+        uL = 0.0
+        uR = 1.0
         xL = 0.25
         xR = 0.75
         endTime = 1.0
@@ -186,7 +203,7 @@ if __name__ == '__main__':
         boundaryConditions = "Periodic"
 
         for i in range(nCells):
-            # Initial condition for step function
+            # Initial condition for top hat function
             mesh.connectivityData.cells[i].solnCell.uCoeffs[0] = np.array(
                 [uR if xL <= coords <= xR else uL for coords in mesh.connectivityData.cells[i].calculations.cellCentre])
             # Set physical values
@@ -221,10 +238,16 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
 
-    CFL = 1.0  # 1 / (2 * P1 + 1)
+    for i in range(nCells):
+        exact_soln[i] = mesh.connectivityData.cells[i].solnCell.uPhysical
+
+    CFL = 0.01  # 1. / (2. * P1 + 1.)
     deltaT = 0.0
     # Constant mesh size for now
     deltax = mesh.connectivityData.cells[0].calculations.V
+
+    """ Initialise new solution coefficients """
+    uCoeffsNew = np.zeros((nCells, P1 + 1, nVars))
 
     """ Start time-loop """
     while endTime - time > 1e-10:
@@ -240,12 +263,6 @@ if __name__ == '__main__':
             deltaT = CFL * deltax / a
         else:
             raise NotImplementedError
-
-        """ Increment time """
-        if time + deltaT > endTime:
-            deltaT = endTime - time
-        time += deltaT
-        print("Current time: " + str(time))
 
         if boundaryConditions == "Periodic":
             """ Set Periodic boundary conditions, i.e., copy end cell values to the other end """
@@ -291,9 +308,6 @@ if __name__ == '__main__':
                                                           , flux(a, rightFaceValueArray[i + 1]),
                                                           flux(a, leftFaceValueArray[i + 2]))
 
-        """ Initialise new solution coefficients """
-        uCoeffsNew = np.zeros((nCells, P1 + 1, nVars))
-
         """ Go through all cells """
         for i in range(nCells):
             """ Backward transformation from coefficient space to physical space """
@@ -313,6 +327,12 @@ if __name__ == '__main__':
 
             uCoeffsNew[i] = mesh.connectivityData.cells[i].solnCell.uCoeffs - deltaT * divFlux
 
+        """ Increment time """
+        if time + deltaT > endTime:
+            deltaT = endTime - time
+        time += deltaT
+        print("Current time: " + str(time))
+
         """ c-1, c, c+1, Periodic """
         # minmod(uCoeffsNew[-1], uCoeffsNew[0], uCoeffsNew[1], mesh.connectivityData.cells[0].solnCell.uCoeffs)
         # minmod(uCoeffsNew[-2], uCoeffsNew[-1], uCoeffsNew[0], mesh.connectivityData.cells[-1].solnCell.uCoeffs)
@@ -324,4 +344,12 @@ if __name__ == '__main__':
         for i in range(nCells):
             mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsNew[i]
 
-    plotSolution(mesh, nCells, nCoords, nVars, test_case, P1, endTime)
+    """ Plot solution """
+    directory = "/Users/jwtan/PycharmProjects/PyDG/data/explicitAdv/"
+    plt_name = test_case + "_P" + str(P1) + "_T" + str(endTime) + "_" + str(numerical_flux.__name__)
+    title = "Step profile, final time = {0} s".format(str(endTime))
+    plotSolution(mesh, nCells, nCoords, nVars, P1, 0., 1., directory, exact_soln, "Central flux", title, plt_name,
+                 save=False)
+
+    """ Calculate L2 error """
+    calculateL2err(mesh, exact_soln, nCells)
