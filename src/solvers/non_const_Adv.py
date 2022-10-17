@@ -18,8 +18,8 @@ if __name__ == '__main__':
     nDims = 2
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
-    P1 = 1
-    P2 = 1
+    P1 = 2
+    P2 = 2
     dims = (P1 + 1) * (P2 + 1)
     # Read in the mesh
     mesh = DgMesh.constructFromPolyMeshFolder(name, nDims)
@@ -58,9 +58,9 @@ if __name__ == '__main__':
         u_l = 0.
         u_r = 1.
         x_centre = 0.
-        y_centre = -1.25
+        y_centre = -1.0
         a = np.empty((nCells, nCoords, 2))
-        endTime = 8.
+        endTime = 10.
         left_boundary = -2.
         bottom_boundary = -2.
         right_boundary = 2.
@@ -88,8 +88,11 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
 
-    plotSolution2d(mesh, nCells, nCoords, nVars, test_case, P1, P2, 0.0, left_boundary, right_boundary,
-                   bottom_boundary, top_boundary)
+    directory = "/Users/jwtan/PycharmProjects/PyDG/data/2D_non_const_adv/"
+    plt_name = test_case + "_P" + str(P1) + "_N" + str(nCells) + "_IC"
+    # title = "Initial condition"
+    # plotSolution2d(mesh, nCells, nCoords, nVars, left_boundary, right_boundary, bottom_boundary, top_boundary,
+    #                directory, exact_soln, " ", title, plt_name, save=False)
 
     """ Identify boundary cells """
     boundaries = [[bottom_boundary, right_boundary], [top_boundary, left_boundary]]
@@ -245,7 +248,7 @@ if __name__ == '__main__':
     ])
     f = np.block([
         [fCoeffsGlobal[i]] for i in range(nCells)
-    ])
+    ]).reshape(-1, 1)
 
     """ Calculate time-step size """
     deltaT = CFL / ((2. / deltax) + (2. / deltay))
@@ -260,29 +263,25 @@ if __name__ == '__main__':
     yCoords = np.array([[mesh.connectivityData.cells[i].GetQuadratureCoords[:, j][1] for j in range(nCoords)]
                         for i in range(nCells)])
     X, Y = np.meshgrid(xCoords, yCoords)
-    no_of_frames = int(endTime / 0.1) + 1
+    frame_rate = 0.1
+    no_of_frames = int(endTime / frame_rate) + 1
     Z = np.zeros((no_of_frames, X.shape[0], Y.shape[0]))
     frame_counter = 0
     record_time = 0.0
 
+    gif_data(mesh, u, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, dims, frame_counter)
+    frame_counter += 1
+    record_time += frame_rate
+
     """ Start time-loop """
     while endTime - time > 1e-10:
 
-        if abs(record_time - time) < 1e-6:
-            save_data(mesh, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, frame_counter)
-            frame_counter += 1
-            record_time += 0.1
-
-        RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
+        RHS = f + np.matmul(M, u.reshape(-1, 1))
 
         """ Initialise new solution coefficients """
         uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)
 
         u = uCoeffsGlobal
-
-        """ No limiter solution """
-        for i in range(nCells):
-            mesh.connectivityData.cells[i].solnCell.uCoeffs = u.reshape(nCells, dims)[i].reshape(-1, 1)
 
         # Increment time
         if time + deltaT > endTime:
@@ -290,10 +289,20 @@ if __name__ == '__main__':
         time += deltaT
         print("Current time: " + str(time))
 
-    gif_name = 'non_constant_vel'
+        if abs(record_time - time) < 1e-8:
+            gif_data(mesh, u, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, dims, frame_counter)
+            frame_counter += 1
+            record_time += frame_rate
+
+    """ No limiter solution """
+    for i in range(nCells):
+        mesh.connectivityData.cells[i].solnCell.uCoeffs = u.reshape(nCells, dims)[i].reshape(-1, 1)
+
+    plt_name = test_case + "_P" + str(P1) + "_T" + str(endTime) + "_N" + str(nCells)
+    gif_name = plt_name + "_movie"
     filenames = []
     for i in range(no_of_frames):
-        levels = MaxNLocator(nbins=15).tick_values(Z[i].min(), Z[i].max())
+        levels = MaxNLocator(nbins=20).tick_values(Z[i].min(), Z[i].max())
         cmap = plt.get_cmap('coolwarm')
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -303,7 +312,7 @@ if __name__ == '__main__':
         fig.colorbar(cf, ax=ax)
 
         # Plot the surface
-        ax.title.set_text("Numerical solution, time = {0}".format(str(i * 0.1)))
+        ax.title.set_text("Numerical solution, time = {0} s".format(str(i * frame_rate)))
         ax.set_xlim(left_boundary, right_boundary)
         ax.set_ylim(bottom_boundary, top_boundary)
         color_tuple = (1.0, 1.0, 1.0, 0.0)
@@ -321,7 +330,7 @@ if __name__ == '__main__':
         plt.close()
 
     # build gif
-    with imageio.get_writer(f'{gif_name}.gif', mode='I') as writer:
+    with imageio.get_writer(f'/Users/jwtan/PycharmProjects/PyDG/src/solvers/gifs/{gif_name}.gif', mode='I') as writer:
         for filename in filenames:
             image = imageio.v2.imread(filename)
             writer.append_data(image)

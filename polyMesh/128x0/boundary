@@ -1,0 +1,17 @@
+2
+(
+    left
+    {
+        type            wall;
+        inGroups        1(wall);
+        nFaces          1;
+        boundaryList    (0 0);
+    }
+    right
+    {
+        type            wall;
+        inGroups        1(wall);
+        nFaces          1;
+        boundaryList    (127 1);
+    }
+)

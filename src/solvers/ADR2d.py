@@ -8,13 +8,13 @@ import os
 import imageio
 import numpy as np
 import math
-from scipy.special import kn
+from scipy.special import kn, kv, kvp
 from src.solvers.ADR import *
 from src.library.dgMesh.dgMesh import *
 from src.library.paramCells.basis import *
 
 
-def sipFlux(cell_left, cell_right, face, bleft, bright, dleft, dright, n):
+def sipFlux(cell_left, cell_right, face, bleft, bright, dleft, dright, n, eta):
     """
     @:brief Symmetric Interior Penalty method for interior faces
     :param cell_left:  Owner cell
@@ -80,7 +80,7 @@ def sipFlux(cell_left, cell_right, face, bleft, bright, dleft, dright, n):
     return owner, own_neigh, neigh_own, neighbour
 
 
-def sipFluxBoundary(cell_left, face_left):
+def sipFluxBoundary(cell_left, face_left, eta):
     """
     @:brief Symmetric Interior Penalty method on Dirichlet boundaries
     :param cell_left: Boundary cell
@@ -128,17 +128,40 @@ def analyticDirichletBCs(x, y):
     return bc.reshape(-1, 1)
 
 
+def analyticDirichletBCsDeriv_x(x, y):
+    bc = (point_source / (2 * np.pi * kappa)) * (kvp(0, (a[0] * np.sqrt(x ** 2 + y ** 2)) / (2 * kappa), 1) *
+                                                 np.exp((a[0] * x) / (2 * kappa)) +
+                                                 kn(0, (a[0] * np.sqrt(x ** 2 + y ** 2)) / (2 * kappa)) *
+                                                 (a[0] / (2 * kappa)) * np.exp((a[0] * x) / (2 * kappa)))
+    return bc.reshape(-1, 1)
+
+
+def analyticDirichletBCsDeriv_y(x, y):
+    bc = (point_source / (2 * np.pi * kappa)) * kvp(0, (a[0] * np.sqrt(x ** 2 + y ** 2)) / (2 * kappa), 1) * \
+         np.exp((a[0] * x) / (2 * kappa))
+
+    return bc.reshape(-1, 1)
+
+
+def analyticDirichletBCsDeriv_xy(x, y):
+    bc = (point_source / (2 * np.pi * kappa)) * (kvp(0, (a[0] * np.sqrt(x ** 2 + y ** 2)) / (2 * kappa), 2) *
+                                                 np.exp((a[0] * x) / (2 * kappa)) +
+                                                 kvp(0, (a[0] * np.sqrt(x ** 2 + y ** 2)) / (2 * kappa), 1) *
+                                                 (a[0] / (2 * kappa)) * np.exp((a[0] * x) / (2 * kappa)))
+    return bc.reshape(-1, 1)
+
+
 if __name__ == '__main__':
     """
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/10x10"
+    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/20x11"
     nDims = 2
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
-    P1 = 2
-    P2 = 2
+    P1 = 1
+    P2 = 1
     dims = (P1 + 1) * (P2 + 1)
     # Read in the mesh
     mesh = DgMesh.constructFromPolyMeshFolder(name, nDims)
@@ -158,7 +181,7 @@ if __name__ == '__main__':
     Set initial values using the first coefficients for constant state, or using physical values then 
     transform back to coefficient space
     """
-    test_case = "pure_advection_gaussian_wave"
+    test_case = "Hinze"
     a = np.array([0., 0.])  # constant velocity
     kappa = 0.
     forcing = 0.
@@ -169,6 +192,7 @@ if __name__ == '__main__':
     top_boundary = None
     g_d = None
     numerical_flux = upwind_flux
+    exact_soln = np.empty((nCells, nCoords, nVars))
 
     if test_case == "pure_advection_gaussian_wave":
         a = np.array([1., 1.])
@@ -187,13 +211,15 @@ if __name__ == '__main__':
             # Initial condition for gaussian wave
             for coords in range(nCoords):
                 mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
-                    np.exp(-8 * (mesh.connectivityData.cells[i].GetQuadratureCoords[:, coords][0] ** 2 +
+                    np.exp(-4 * (mesh.connectivityData.cells[i].GetQuadratureCoords[:, coords][0] ** 2 +
                                  mesh.connectivityData.cells[i].GetQuadratureCoords[:, coords][1] ** 2))
 
             mesh.connectivityData.cells[i].solnCell.uCoeffs = \
                 forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
 
-    elif test_case == "pure_advection_circular_top_hat":
+            exact_soln[i] = mesh.connectivityData.cells[i].solnCell.uPhysical
+
+    elif test_case == "pure_advection_circular_func":
         u_l = 0.
         u_r = 1.
         x_centre = 0.0
@@ -223,6 +249,8 @@ if __name__ == '__main__':
             mesh.connectivityData.cells[i].solnCell.uCoeffs = \
                 forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
 
+            exact_soln[i] = mesh.connectivityData.cells[i].solnCell.uPhysical
+
     elif test_case == "Poisson":
         g_d = zeroDirichletBCs
         left_boundary = -1.
@@ -249,16 +277,48 @@ if __name__ == '__main__':
         bottom_boundary = -0.5
         right_boundary = 4.05
         top_boundary = 0.5
-        endTime = 8.0
+        endTime = 0.1
         left_BCs = "Dirichlet"
         bottom_BCs = "Dirichlet"
         right_BCs = "Neumann"
         top_BCs = "Dirichlet"
 
         """ Zeros initial condition not needed """
+        for i in range(nCells):
+            for coord in range(nCoords):
+                x_coord = mesh.connectivityData.cells[i].GetQuadratureCoords[:, coord][0]
+                y_coord = mesh.connectivityData.cells[i].GetQuadratureCoords[:, coord][1]
+                exact_soln[i][coord] = (point_source / (2 * np.pi * kappa)) * \
+                                       kn(0, (np.sqrt(x_coord ** 2 + y_coord ** 2)) / (2 * kappa)) * \
+                                       np.exp(x_coord / (2 * kappa))
 
     else:
         raise NotImplementedError
+
+    """ Plot exact solution """
+    # xCoords = np.array([[mesh.connectivityData.cells[i].GetQuadratureCoords[:, j][0] for j in range(nCoords)]
+    #                     for i in range(nCells)])
+    # yCoords = np.array([[mesh.connectivityData.cells[i].GetQuadratureCoords[:, j][1] for j in range(nCoords)]
+    #                     for i in range(nCells)])
+    # X, Y = np.meshgrid(xCoords, yCoords)
+    # Z = np.empty((X.shape[0], Y.shape[0]))
+    #
+    # for i in range(X.shape[0]):
+    #     for j in range(Y.shape[0]):
+    #         Z[i][j] = (point_source / (2 * np.pi * kappa)) * \
+    #                   kn(0, (np.sqrt(X[i][j] ** 2 + Y[i][j] ** 2)) / (2 * kappa)) * \
+    #                   np.exp(X[i][j] / (2 * kappa))
+    #
+    # fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=100)
+    #
+    # # Plot the surface
+    # surf = ax.contourf(X, Y, Z, cmap='coolwarm', linewidth=0, antialiased=False)
+    # ax.title.set_text("Exact solution")
+    # ax.set_xlim(left_boundary, right_boundary)
+    # ax.set_ylim(bottom_boundary, top_boundary)
+    # fig.colorbar(surf, shrink=0.5, aspect=5)
+    #
+    # plt.show()
 
     if a[0] < 0 or a[1] < 0:
         print("Advection velocity has to be positive for now.")
@@ -279,8 +339,11 @@ if __name__ == '__main__':
                    for i in range(nCells)]
             boundaryIDs.append(np.unique(np.array([item for elem in IDs for item in elem])))
 
-    plotSolution2d(mesh, nCells, nCoords, nVars, test_case, P1, P2, 0.0, left_boundary, right_boundary,
-                   bottom_boundary, top_boundary)
+    directory = "/Users/jwtan/PycharmProjects/PyDG/data/2D_adr/"
+    plt_name = test_case + "_P" + str(P1) + "_N" + str(nCells) + "_IC"
+    # title = "Initial condition"
+    # plotSolution2d(mesh, nCells, nCoords, nVars, left_boundary, right_boundary, bottom_boundary, top_boundary,
+    #                directory, exact_soln, " ", title, plt_name, save=True)
 
     CFL = 0.01
     # Constant mesh size for now
@@ -310,7 +373,10 @@ if __name__ == '__main__':
     fCoeffsGlobal = np.zeros((nCells, dims))
 
     """ Penalty factor, 10 to 20 in paper """
-    eta = (P1 ** 2) * (10.0 / mesh.connectivityData.cells[0].calculations.V)
+    # mesh.connectivityData.cells[0].calculations.V
+    eta_x = (P1 ** 2) * (10.0 / deltax)
+    eta_y = (P2 ** 2) * (10.0 / deltay)
+    eta_ = [eta_x, eta_y]
 
     """ Global solution coefficients """
     u = np.block([
@@ -342,7 +408,7 @@ if __name__ == '__main__':
                 """ SIP """
                 sipMatrices[boundaryIDs[j][i]][boundaryIDs[j][i]] = \
                     sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[j][i]],
-                                    mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j])
+                                    mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j], eta_[j % 2])
                 """ Varying x and y-coordinates of face Gauss points """
                 if j == 0 or j == 2:
                     x = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.geometry. \
@@ -368,7 +434,7 @@ if __name__ == '__main__':
                 term1 = n_list[j] * np.matmul(
                     (dxi1dx * tmpOwnerDeriv[:, :, 0] + dxi2dx * tmpOwnerDeriv[:, :, 1]).transpose(),
                     weight_matrix * g_d(x, y))
-                term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d(x, y))
+                term2 = eta_[j % 2] * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d(x, y))
 
                 fCoeffsGlobal[boundaryIDs[j][i]] += kappa * (term1 + term2).reshape(-1)
 
@@ -386,27 +452,28 @@ if __name__ == '__main__':
                                            geomCell.detJacobian))
                 fCoeffsGlobal[boundaryIDs[j][i]] -= faceMatrix.reshape(-1)
 
-        if BCs[j] == "Periodic":
+        elif BCs[j] == "Periodic":
             for i in range(len(boundaryIDs[j])):
                 """ SIP """
                 sipMatrices[boundaryIDs[j][i]][boundaryIDs[j][i]] = \
                     sipFluxBoundary(mesh.connectivityData.cells[boundaryIDs[j][i]],
-                                    mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j])
-                """ Upwind """
-                tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
-                vel = np.array(
-                    [np.matmul(a, mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
-                               unitNormal[k].transpose())
-                     for k in range(len(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
-                                        paramSeg.zeros))])
-                tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[j - 2][i]].facesCell.F[j - 2].faceBasis
+                                    mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j], eta_[j % 2])
+                if j != 1 and j != 2:
+                    """ Upwind """
+                    tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
+                    vel = np.array(
+                        [np.matmul(a, mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                   unitNormal[k].transpose())
+                         for k in range(len(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                            paramSeg.zeros))])
+                    tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[j - 2][i]].facesCell.F[j - 2].faceBasis
 
-                faceMatrix = np.matmul(tmpOwnerBasis.transpose(), tmpNeighbourBasis * vel.reshape(-1, 1) *
-                                       mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
-                                       paramSeg.weights *
-                                       abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
-                                           geomCell.detJacobian))
-                globalOffDiag[boundaryIDs[j - 2][i]][boundaryIDs[j][i]] += faceMatrix
+                    faceMatrix = np.matmul(tmpOwnerBasis.transpose(), tmpNeighbourBasis * vel.reshape(-1, 1) *
+                                           mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                           paramSeg.weights *
+                                           abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].
+                                               geomCell.detJacobian))
+                    globalOffDiag[boundaryIDs[j - 2][i]][boundaryIDs[j][i]] += faceMatrix
 
     """ Populate internal values """
     for i in range(nCells):
@@ -435,7 +502,7 @@ if __name__ == '__main__':
                     sipFlux(mesh.connectivityData.cells[i], mesh.connectivityData.cells[sipNeighbourIDs[j]],
                             mesh.connectivityData.cells[i].facesCell.F[sipOwnerFaces[j]],
                             tmpOwnerBasis, tmpNeighbourBasis, tmpOwnerDeriv, tmpNeighbourDeriv,
-                            mesh.connectivityData.cells[i].facesCell.F[sipOwnerFaces[j]].unitNormal[0])
+                            mesh.connectivityData.cells[i].facesCell.F[sipOwnerFaces[j]].unitNormal[0], eta_[1 - j])
 
                 sipMatrices[i][i] += temp1
                 sipMatrices[i][sipNeighbourIDs[j]] += temp2
@@ -495,7 +562,7 @@ if __name__ == '__main__':
     ])
     f = np.block([
         [fCoeffsGlobal[i]] for i in range(nCells)
-    ])
+    ]).reshape(-1, 1)
 
     time_loop = True
     """ Calculate time-step size """
@@ -509,8 +576,9 @@ if __name__ == '__main__':
         M = massMatrices / deltaT
 
     globalMatrix = M + globalDiag + stiffnessMatrices + globalOffDiag + kappa * A
+    print("Inverting global matrix.")
     invGlobalMatrix = np.linalg.inv(globalMatrix)
-    RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
+    RHS = f + np.matmul(M, u.reshape(-1, 1))
 
     """ Create a gif """
     xCoords = np.array([[mesh.connectivityData.cells[i].GetQuadratureCoords[:, j][0] for j in range(nCoords)]
@@ -518,63 +586,59 @@ if __name__ == '__main__':
     yCoords = np.array([[mesh.connectivityData.cells[i].GetQuadratureCoords[:, j][1] for j in range(nCoords)]
                         for i in range(nCells)])
     X, Y = np.meshgrid(xCoords, yCoords)
-    no_of_frames = int(endTime / 0.1) + 1
+    frame_rate = 0.002
+    no_of_frames = int(endTime / frame_rate) + 1
     Z = np.zeros((no_of_frames, X.shape[0], Y.shape[0]))
     frame_counter = 0
     record_time = 0.0
+
+    gif_data(mesh, u, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, dims, frame_counter)
+    frame_counter += 1
+    record_time += frame_rate
 
     if time_loop:
         """ Start time-loop """
         while endTime - time > 1e-10:
 
-            if abs(record_time - time) < 1e-6:
-                save_data(mesh, u, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, dims, frame_counter)
-                frame_counter += 1
-                record_time += 0.1
-
             """ Iterate through domain boundaries """
-            for j in range(4):
-                if BCs[j] == "Periodic":
-                    for i in range(len(boundaryIDs[j])):
-                        tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[j - 2][i]].facesCell.F[j - 2]. \
-                            faceBasis
-                        g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[j - 2][i]].
-                                        reshape(-1, 1))
-                        if j == 0 or j == 2:
-                            dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 1]
-                            dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 1]
-                        if j == 1 or j == 3:
-                            dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 0]
-                            dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 0]
-                        else:
-                            raise NotImplementedError
+            # for j in range(4):
+            #     if BCs[j] == "Periodic":
+            #         for i in range(len(boundaryIDs[j])):
+            #             tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[j - 2][i]].facesCell.F[j - 2]. \
+            #                 faceBasis
+            #             g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[j - 2][i]].
+            #                             reshape(-1, 1))
+            #             if j == 0 or j == 2:
+            #                 dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 1]
+            #                 dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 1]
+            #             elif j == 1 or j == 3:
+            #                 dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 0]
+            #                 dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 0]
+            #             else:
+            #                 raise NotImplementedError
+            #
+            #             weight_matrix = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].paramSeg.weights \
+            #                             * abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.
+            #                                   detJacobian)
+            #             tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
+            #             tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceDeriv
+            #             term1 = n_list[j] * np.matmul(
+            #                 (dxi1dx * tmpOwnerDeriv[:, :, 0] + dxi2dx * tmpOwnerDeriv[:, :, 1]).transpose(),
+            #                 weight_matrix * g_d)
+            #             term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
+            #
+            #             fCoeffsGlobal[boundaryIDs[j][i]] = kappa * (term1 + term2).reshape(-1)
+            #
+            # if bottom_BCs or right_BCs or top_BCs or left_BCs == "Periodic":
+            #     f = np.block([
+            #         [fCoeffsGlobal[i]] for i in range(nCells)
+            #     ])
 
-                        weight_matrix = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].paramSeg.weights\
-                                        * abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.
-                                              detJacobian)
-                        tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
-                        tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceDeriv
-                        term1 = n_list[j] * np.matmul(
-                            (dxi1dx * tmpOwnerDeriv[:, :, 0] + dxi2dx * tmpOwnerDeriv[:, :, 1]).transpose(),
-                            weight_matrix * g_d)
-                        term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
-
-                        fCoeffsGlobal[boundaryIDs[j][i]] = kappa * (term1 + term2).reshape(-1)
-
-            if bottom_BCs or right_BCs or top_BCs or left_BCs == "Periodic":
-                f = np.block([
-                    [fCoeffsGlobal[i]] for i in range(nCells)
-                ])
-
-            RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
+            RHS = f + np.matmul(M, u.reshape(-1, 1))
 
             uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)
 
             u = uCoeffsGlobal
-
-            """ No limiter solution """
-            # for i in range(nCells):
-            #     mesh.connectivityData.cells[i].solnCell.uCoeffs = u.reshape(nCells, dims)[i].reshape(-1, 1)
 
             # Increment time
             if time + deltaT > endTime:
@@ -582,20 +646,34 @@ if __name__ == '__main__':
             time += deltaT
             print("Current time: " + str(time))
 
+            if abs(record_time - time) < 1e-8:
+                gif_data(mesh, u, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, dims, frame_counter)
+                frame_counter += 1
+                record_time += frame_rate
+
     else:
         uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)  # spsolve(A, RHS) for iterative methods
 
     """ No limiter solution """
     for i in range(nCells):
         mesh.connectivityData.cells[i].solnCell.uCoeffs = uCoeffsGlobal.reshape(nCells, dims)[i].reshape(-1, 1)
+        mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
+            mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
 
-    plotSolution2d(mesh, nCells, nCoords, nVars, test_case, P1, P2, endTime, left_boundary, right_boundary,
-                   bottom_boundary, top_boundary)
+    """ Plot solution """
+    plt_name = test_case + "_P" + str(P1) + "_T" + str(endTime) + "_N" + str(nCells)
+    title = "Numerical solution, final time = {0} s".format(str(endTime))
+    # plotSolution2d(mesh, nCells, nCoords, nVars, left_boundary, right_boundary,
+    #                bottom_boundary, top_boundary, directory, exact_soln, " ", title,
+    #                plt_name, save=True)
 
-    gif_name = 'movie'
+    """ Calculate L2 error """
+    # calculateL2err2d(mesh, exact_soln, nCells)
+
+    gif_name = plt_name + "_movie"
     filenames = []
     for i in range(no_of_frames):
-        levels = MaxNLocator(nbins=15).tick_values(Z[i].min(), Z[i].max())
+        levels = MaxNLocator(nbins=20).tick_values(Z[i].min(), Z[i].max())
         cmap = plt.get_cmap('coolwarm')
         norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
 
@@ -605,7 +683,7 @@ if __name__ == '__main__':
         fig.colorbar(cf, ax=ax)
 
         # Plot the surface
-        ax.title.set_text("Numerical solution, time = {0}".format(str(i * 0.1)))
+        ax.title.set_text("Numerical solution, time = {0}".format(str(i * frame_rate)))
         ax.set_xlim(left_boundary, right_boundary)
         ax.set_ylim(bottom_boundary, top_boundary)
         color_tuple = (1.0, 1.0, 1.0, 0.0)
@@ -623,7 +701,7 @@ if __name__ == '__main__':
         plt.close()
 
     # build gif
-    with imageio.get_writer(f'{gif_name}.gif', mode='I') as writer:
+    with imageio.get_writer(f'/Users/jwtan/PycharmProjects/PyDG/src/solvers/gifs/{gif_name}.gif', mode='I') as writer:
         for filename in filenames:
             image = imageio.v2.imread(filename)
             writer.append_data(image)
@@ -631,28 +709,3 @@ if __name__ == '__main__':
     # Remove files
     for filename in set(filenames):
         os.remove(filename)
-
-    """ Plot exact solution """
-    # xCoords = np.array([[mesh.connectivityData.cells[i].GetQuadratureCoords[:, j][0] for j in range(nCoords)]
-    #                     for i in range(nCells)])
-    # yCoords = np.array([[mesh.connectivityData.cells[i].GetQuadratureCoords[:, j][1] for j in range(nCoords)]
-    #                     for i in range(nCells)])
-    # X, Y = np.meshgrid(xCoords, yCoords)
-    # Z = np.empty((X.shape[0], Y.shape[0]))
-    #
-    # for i in range(X.shape[0]):
-    #     for j in range(Y.shape[0]):
-    #         Z[i][j] = (point_source / (2 * np.pi * kappa)) * \
-    #                   kn(0, (np.sqrt(X[i][j] ** 2 + Y[i][j] ** 2)) / (2 * kappa)) * \
-    #                   np.exp(X[i][j] / (2 * kappa))
-    #
-    # fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=100)
-    #
-    # # Plot the surface
-    # surf = ax.contour(X, Y, Z, cmap='coolwarm', linewidth=0, antialiased=False)
-    # ax.title.set_text("Exact solution")
-    # ax.set_xlim(left_boundary, right_boundary)
-    # ax.set_ylim(bottom_boundary, top_boundary)
-    # fig.colorbar(surf, shrink=0.5, aspect=5)
-    #
-    # plt.show()

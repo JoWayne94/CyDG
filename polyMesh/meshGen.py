@@ -52,22 +52,22 @@ def populatePointCoords(r, coord, N, delta, max_, min_, gp):
 if __name__ == '__main__':
 
     """ x min """
-    x_min = 0.
+    x_min = -1.
 
     """ y min """
-    y_min = 0.
+    y_min = -1.
 
     """ x max """
     x_max = 1.
 
     """ y max """
-    y_max = 0.
+    y_max = 1.
 
     """ No. of cells in x-direction """
-    Nx = 800
+    Nx = 8
 
     """ No. of cells in y-direction """
-    Ny = 1
+    Ny = 8
 
     """ Geometric progression ratio in x-direction """
     rx = 1.0

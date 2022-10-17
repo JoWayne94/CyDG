@@ -76,7 +76,7 @@ if __name__ == '__main__':
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/800x0"
+    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/100x0"
     nDims = 1
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
@@ -106,7 +106,7 @@ if __name__ == '__main__':
     Set initial values using the first coefficients for constant state, or using physical values then 
     transform back to coefficient space
     """
-    test_case = "pure_advection_step_profile"
+    test_case = "pure_advection_sine_wave"
     a = 0.  # constant velocity
     kappa = 0.
     forcing = 0.
@@ -130,6 +130,8 @@ if __name__ == '__main__':
             mesh.connectivityData.cells[i].solnCell.uCoeffs = \
                 forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
 
+            exact_soln[i] = mesh.connectivityData.cells[i].solnCell.uPhysical
+
     elif test_case == "pure_advection_step_profile":
         u_l = 0.
         u_r = 1.
@@ -149,6 +151,8 @@ if __name__ == '__main__':
             mesh.connectivityData.cells[i].solnCell.uPhysical = np.matmul(
                 mesh.connectivityData.cells[i].matCell.basisMatrix, mesh.connectivityData.cells[i].solnCell.uCoeffs)
 
+            exact_soln[i] = mesh.connectivityData.cells[i].solnCell.uPhysical
+
     elif test_case == "pure_advection_shu_test":
         a = 1.
         endTime = 2.0
@@ -167,19 +171,23 @@ if __name__ == '__main__':
                 x_coord = mesh.connectivityData.cells[i].GetQuadratureCoords[coords]
                 if -0.8 <= x_coord <= -0.6:
                     mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
-                        (1/6) * (G(x_coord, gamma, z - delta) + G(x_coord, gamma, z + delta) + 4 * G(x_coord, gamma, z))
+                        (1 / 6) * (G(x_coord, gamma, z - delta) + G(x_coord, gamma, z + delta) + 4 * G(x_coord, gamma,
+                                                                                                       z))
                 elif -0.4 <= x_coord <= -0.2:
                     mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = 1.
                 elif 0. <= x_coord <= 0.2:
                     mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = 1. - abs(10 * (x_coord - 0.1))
                 elif 0.4 <= x_coord <= 0.6:
                     mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
-                        (1/6) * (F(x_coord, alpha, b - delta) + F(x_coord, alpha, b + delta) + 4 * F(x_coord, alpha, b))
+                        (1 / 6) * (F(x_coord, alpha, b - delta) + F(x_coord, alpha, b + delta) + 4 * F(x_coord, alpha,
+                                                                                                       b))
                 else:
                     mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = 0.
 
             mesh.connectivityData.cells[i].solnCell.uCoeffs = \
                 forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
+
+            exact_soln[i] = mesh.connectivityData.cells[i].solnCell.uPhysical
 
     elif test_case == "Laplace":
         g_d_left = 5.
@@ -189,6 +197,11 @@ if __name__ == '__main__':
         boundaryConditions = "Dirichlet"
 
         """ No initial conditions """
+        m = ((g_d_right - g_d_left) / (1. + 1.))
+        c = 2. - m * 1.
+        for i in range(nCells):
+            for coords in range(nCoords):
+                exact_soln[i][coords] = m * mesh.connectivityData.cells[i].GetQuadratureCoords[coords] + c
 
     elif test_case == "Poisson":
         g_d_left = 0.
@@ -199,19 +212,35 @@ if __name__ == '__main__':
 
         """ No initial conditions """
 
+        for i in range(nCells):
+            for coords in range(nCoords):
+                exact_soln[i][coords] = 1. - mesh.connectivityData.cells[i].GetQuadratureCoords[coords] ** 2
+
+    elif test_case == "Poisson2":
+        g_d_left = 0.
+        g_d_right = 0.
+        kappa = 1.
+        boundaryConditions = "Dirichlet"
+
+        """ No initial conditions """
+
+        for i in range(nCells):
+            for coords in range(nCoords):
+                exact_soln[i][coords] = np.sin(np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coords])
+
     elif test_case == "pure_diffusion_sine_wave":
         g_d_left = 0.
         g_d_right = 0.
         kappa = 1.
         forcing = 0.  # du/dt - Laplace(u) = forcing
-        endTime = 0.3
+        endTime = 1.6
         boundaryConditions = "Dirichlet"
 
         for i in range(nCells):
             # Initial condition for sine wave
             for coords in range(nCoords):
                 mesh.connectivityData.cells[i].solnCell.uPhysical[coords] = \
-                    np.sin(np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coords])
+                    np.sin(np.pi / 2 * (mesh.connectivityData.cells[i].GetQuadratureCoords[coords] + 1))
 
             mesh.connectivityData.cells[i].solnCell.uCoeffs = \
                 forwardTransform(mesh, mesh.connectivityData.cells[i].solnCell.uPhysical, i)
@@ -221,7 +250,7 @@ if __name__ == '__main__':
         g_d_right = 17.
         kappa = 1.
         forcing = 0.  # du/dt - Laplace(u) = forcing
-        endTime = 1.0
+        endTime = 2.2
         boundaryConditions = "Dirichlet"
 
         for i in range(nCells):
@@ -251,9 +280,6 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError
 
-    for i in range(nCells):
-        exact_soln[i] = mesh.connectivityData.cells[i].solnCell.uPhysical
-
     if a < 0:
         print("Advection velocity has to be positive for now.")
         raise ValueError
@@ -261,7 +287,7 @@ if __name__ == '__main__':
         print("Negative diffusivity will blow up the solution.")
         raise ValueError
 
-    CFL = 1.0
+    CFL = 0.01
     # Constant mesh size for now
     deltax = mesh.connectivityData.cells[0].calculations.V
 
@@ -288,7 +314,7 @@ if __name__ == '__main__':
     fCoeffsGlobal = np.zeros((nCells, P1 + 1))
 
     """ Penalty factor, 10 to 20 in paper """
-    eta = (P1 ** 2) * (1.0 / deltax)
+    eta = (P1 ** 2) * (10.0 / deltax)
 
     """ Global solution coefficients """
     u = np.block([
@@ -349,6 +375,10 @@ if __name__ == '__main__':
         stiffnessMatrices[i][i] = -a * mesh.connectivityData.cells[i].stiffnessMatrix
 
         tempf = forcing * np.ones((nCoords, nVars))
+        # tempf = np.empty((nCoords, nVars))
+        # for coord in range(nCoords):
+        #     tempf[coord][0] = np.pi ** 2 * \
+        #             np.sin(np.pi * mesh.connectivityData.cells[i].GetQuadratureCoords[coord])
 
         fCoeffsGlobal[i] += np.matmul(mesh.connectivityData.cells[i].matCell.basisMatrix.transpose(),
                                       tempf * mesh.connectivityData.cells[i].paramSeg.weights * \
@@ -397,6 +427,19 @@ if __name__ == '__main__':
     print("Inverting global matrix.")
     invGlobalMatrix = np.linalg.inv(globalMatrix)
     RHS = f.reshape(-1, 1) + np.matmul(M, u.reshape(-1, 1))
+
+    """ Create a gif """
+    # xCoords = np.array([[mesh.connectivityData.cells[i].GetQuadratureCoords[j] for j in range(nCoords)]
+    #                     for i in range(nCells)])
+    # frame_rate = 0.1
+    # no_of_frames = int(endTime / frame_rate) + 1
+    # Z = np.zeros((no_of_frames, xCoords.shape[0]))
+    # frame_counter = 0
+    # record_time = 0.0
+    #
+    # gif_data(mesh, u, Z, xCoords, nCells, nCoords, nVars, dims, frame_counter)
+    # frame_counter += 1
+    # record_time += frame_rate
 
     if time_loop:
         """ Start time-loop """
@@ -449,10 +492,12 @@ if __name__ == '__main__':
 
     """ Plot solution """
     directory = "/Users/jwtan/PycharmProjects/PyDG/data/ADR/"
-    plt_name = test_case + "_P" + str(P1) + "_T" + str(endTime) + "_N" + str(nCells)
-    title = "Rectangular function, final time = {0} s".format(str(endTime))
-    plotSolution(mesh, nCells, nCoords, nVars, P1, 0., 1., directory, exact_soln, "Upwind flux", title, plt_name,
+    plt_name = test_case + "_P" + str(P1) + "_T" + str(endTime) + "_N" + str(nCells) + "_CFL" + str(CFL)
+    title = "AD equation, final time = {0} s".format(str(endTime))
+    # title = "Laplace's equation"
+    plotSolution(mesh, nCells, nCoords, nVars, P1, 0., 1., directory, exact_soln, "Numerical solution", title,
+                 plt_name,
                  save=True)
 
     """ Calculate L2 error """
-    calculateL2err(mesh, exact_soln, nCells)
+    # calculateL2err(mesh, exact_soln, nCells)
