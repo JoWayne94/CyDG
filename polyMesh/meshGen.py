@@ -1,7 +1,7 @@
 """
 File: meshGen.py
 
-Description: Generate structured quadrilateral mesh in 2D
+Description: Generate structured triangular and quadrilateral mesh in 2D
 """
 # typedef std::vector<int> IntVec;
 # typedef std::vector<double> DoubleVec;
@@ -13,37 +13,51 @@ import sys
 import matplotlib.pyplot as plt
 
 
-def populatePointCoords(r, coord, N, delta, max_, min_, gp):
+def populatePointCoords(r, coord, n, delta, max_, min_, gp):
+    """
+    @:brief Fill in numpy array with x, y point coordinates
+    :param r:       Geometric ratio
+    :param coord:   Coordinates container
+    :param n:       Number of cells in one-direction
+    :param delta:   Mesh size
+    :param max_:    End of physical domain coordinate
+    :param min_:    Start of physical domain coordinate
+    :param gp:      Geometric progression
+    :return:        void
+    """
 
     if r == 1.0:
-        for n in range(N):
-            delta[n] = (max_ - min_) / N
-            coord[n + 1] = coord[n] + delta[n]
+        for i in range(n):
+            delta[i] = (max_ - min_) / n
+            coord[i + 1] = coord[i] + delta[i]
 
     else:
-        """ Geometric progression """
+
         if gp == "single_gp":
-            delta[0] = (max_ - min_) * (1 - r) / (1 - r ** N)
+            """ One-way geometric progression """
+            delta[0] = (max_ - min_) * (1 - r) / (1 - r ** n)
             coord[1] = coord[0] + delta[0]
-            for n in range(1, N):
-                delta[n] = delta[n - 1] * r
-                coord[n + 1] = coord[n] + delta[n]
+            for i in range(1, n):
+                delta[i] = delta[i - 1] * r
+                coord[i + 1] = coord[i] + delta[i]
 
         elif gp == "double_gp":
+            """ Two-way geometric progression """
             coord[-1] = max_
-            number1 = (-1 * (-N // 2))
-            number2 = N - number1
+            number1 = (-1 * (-n // 2))
+            number2 = n - number1
             delta[0] = ((max_ - min_) / 2) * (1 - r) / (1 - r ** number1)
             coord[1] = coord[0] + delta[0]
             delta[-1] = ((max_ - min_) / 2) * (1 - r) / (1 - r ** number2)
             coord[-2] = coord[-1] - delta[-1]
-            for n in range(1, number1):
-                delta[n] = delta[n - 1] * r
-                coord[n + 1] = coord[n] + delta[n]
 
-            for n in range(1, number2):
-                delta[-1 - n] = delta[-n] * r
-                coord[-2 - n] = coord[-1 - n] - delta[-1 - n]
+            for i in range(1, number1):
+                delta[i] = delta[i - 1] * r
+                coord[i + 1] = coord[i] + delta[i]
+
+            for i in range(1, number2):
+                delta[-1 - i] = delta[-i] * r
+                coord[-2 - i] = coord[-1 - i] - delta[-1 - i]
 
         else:
             raise NotImplementedError
@@ -64,16 +78,20 @@ if __name__ == '__main__':
     y_max = 1.
 
     """ No. of cells in x-direction """
-    Nx = 8
+    Nx = 3
 
     """ No. of cells in y-direction """
-    Ny = 8
+    Ny = 3
 
     """ Geometric progression ratio in x-direction """
     rx = 1.0
 
     """ Geometric progression ratio in y-direction """
     ry = 1.0
+
+    """ Cell shape """
+    shape = "T"
+    tri_direction = "diagonal"
 
     save_dat = True  # save points and cells data
     gpx = "single_gp"  # single or double geometric progression
@@ -82,11 +100,9 @@ if __name__ == '__main__':
     """ Total no. of points """
     N = (Nx + 1) * (Ny + 1)
 
-    """ Total number of cells """
-    nCells = Nx * Ny
-
     """ Point IDs list """
-    listP = np.empty(N, dtype=int)
+    # listP = np.empty(N, dtype=int)
+    listP = np.array([i for i in range(N)])
 
     """ Point coordinates lists """
     listPx = np.empty(Nx + 1, dtype=np.double)
@@ -118,8 +134,6 @@ if __name__ == '__main__':
     #     dx[i] = (-dx[0] * (listPx[i] - (x_max - x_min) * 0.5) ** 2) + b
 
     """ Output the data """
-    for i in range(N):
-        listP[i] = i
     # outputList = np.zeros((N, 2))
     #     outputList[i][0] = listPx[i % (Nx + 1)]
     #     outputList[i][1] = listPy[i // (Nx + 1)]
@@ -137,18 +151,62 @@ if __name__ == '__main__':
                         ') \n')
             f.write(') \n')
 
-    cells = np.empty((nCells, 4), dtype=int)
     # totalEdges = Nx * (Ny + 1) + Ny * (Nx + 1)
     # internalEdges = totalEdges - 2 * (Nx + Ny)
 
-    temp, count = 1, 1
-    for i in range(0, nCells, 1):
-        temp = i // Nx
-        cells[i][0] = listP[count + temp - 1]
-        cells[i][1] = listP[count + temp]
-        cells[i][2] = listP[count + temp + (Nx + 1)]
-        cells[i][3] = listP[count + temp + (Nx + 1) - 1]
-        count += 1
+    if shape == "Q":
+        """ Total number of cells """
+        nCells = Nx * Ny
+
+        cells = np.empty((nCells, 4), dtype=int)
+
+        temp, count = 1, 1
+        for i in range(0, nCells, 1):
+            temp = i // Nx
+            cells[i][0] = listP[count + temp - 1]
+            cells[i][1] = listP[count + temp]
+            cells[i][2] = listP[count + temp + (Nx + 1)]
+            cells[i][3] = listP[count + temp + (Nx + 1) - 1]
+            count += 1
+
+    elif shape == "T":
+        """ Total number of cells """
+        nCells = Nx * Ny * 2
+
+        cells = np.empty((nCells, 3), dtype=int)
+
+        temp, count = 1, 1
+        if tri_direction == "diagonal":
+            for i in range(0, nCells, 2):
+                temp = i // (Nx * 2)
+                cells[i][0] = listP[count + temp - 1]
+                cells[i][1] = listP[count + temp]
+                cells[i][2] = listP[count + temp + (Nx + 1) - 1]
+
+                cells[i + 1][0] = listP[count + temp]
+                cells[i + 1][1] = listP[count + temp + (Nx + 1)]
+                cells[i + 1][2] = listP[count + temp + (Nx + 1) - 1]
+                count += 1
+
+        elif tri_direction == "anti-diagonal":
+            for i in range(0, nCells, 2):
+                temp = i // (Nx * 2)
+                cells[i][0] = listP[count + temp - 1]
+                cells[i][1] = listP[count + temp + (Nx + 1)]
+                cells[i][2] = listP[count + temp + (Nx + 1) - 1]
+
+                cells[i + 1][0] = listP[count + temp - 1]
+                cells[i + 1][1] = listP[count + temp]
+                cells[i + 1][2] = listP[count + temp + (Nx + 1)]
+                count += 1
+
+        else:
+            print("Diagonalisation direction not specified. Please try again.")
+            raise NotImplementedError
+
+    else:
+        print("Shape input not defined. Please pick Q or T.")
+        raise NotImplementedError
 
     if save_dat:
         name = 'rawOutput/' + str(Nx) + '_' + str(Ny) + "_cells_list.dat"
@@ -156,138 +214,17 @@ if __name__ == '__main__':
             f.write(str(nCells) + '\n')
             f.write('( \n')
             for i in range(nCells):
-                f.write('(Q ' + str(cells[i][0]) + ' ' + str(cells[i][1]) + ' ' + str(cells[i][2]) + ' ' +
-                        str(cells[i][3]) + ') \n')
+                f.write('(' + shape + ' ' + ' '.join([str(cells[i][j]) for j in range(len(cells[i]))]) + ') \n')
             f.write(') \n')
 
-    for i in range(Ny + 1):
-        plt.plot(listPx, np.full(Nx + 1, listPy[i]), 'k')
+    plt.plot(np.full(Ny + 1, listPx[0]), listPy, 'k')
+    for i in range(nCells):
+        plt.plot([listPx[j % (Nx + 1)] for j in cells[i]], [listPy[j // (Nx + 1)] for j in cells[i]], 'k')
 
-    for i in range(Nx + 1):
-        plt.plot(np.full(Ny + 1, listPx[i]), listPy, 'k')
+    # for i in range(Ny + 1):
+    #     plt.plot(listPx, np.full(Nx + 1, listPy[i]), 'k')
+    # for i in range(Nx + 1):
+    #     plt.plot(np.full(Ny + 1, listPx[i]), listPy, 'k')
 
     plt.axis('square')
     plt.show()
-
-    # edges = np.empty(internalEdges, dtype=int)
-    # edgesP1 = np.empty_like(edges)
-    # edgesP2 = np.empty_like(edges)
-    # ownerArray = np.empty_like(edges)
-    # neighbourArray = np.empty_like(edges)
-    #
-    # edgesP1x = np.empty(internalEdges, dtype=np.double)
-    # edgesP2x = np.empty_like(edgesP1x)
-    # edgesP1y = np.empty_like(edgesP1x)
-    # edgesP2y = np.empty_like(edgesP1x)
-    #
-    # cellVol = np.empty_like(edgesP1x)
-    # fxGeom = np.empty_like(edgesP1x)
-    # edgesLength = np.empty_like(edgesP1x)
-    #
-    # faceNormal = np.empty((internalEdges, 2), dtype=np.double)
-    # cellCentre = np.empty_like(faceNormal)
-    # distance = np.empty_like(faceNormal)
-    #
-    # for i in range(0, internalEdges - ((Ny - 1) + (Nx - 1)), 2):
-    #     temp = i // (2 * (Nx - 1))
-    #     edgesP1[i + temp] = listP[count + 2 * temp]  # point i+1
-    #     edgesP2[i + temp] = listP[count + 2 * temp + (Nx + 1)]
-    #     edgesP1[i + temp + 1] = edgesP2[i + temp]
-    #     edgesP2[i + temp + 1] = listP[count + 2 * temp + (Nx + 1) - 1]
-    #
-    #     edgesP1x[i + temp] = listPx[(count + 2 * temp) % (Nx + 1)]
-    #     edgesP1y[i + temp] = listPy[(count + 2 * temp) // (Nx + 1)]
-    #     edgesP2x[i + temp] = listPx[(count + 2 * temp + (Nx + 1)) % (Nx + 1)]
-    #     edgesP2y[i + temp] = listPy[(count + 2 * temp + (Nx + 1)) // (Nx + 1)]
-    #
-    #     edgesP1x[i + temp + 1] = edgesP2x[i + temp]
-    #     edgesP1y[i + temp + 1] = edgesP2y[i + temp]
-    #     edgesP2x[i + temp + 1] = listPx[(count + 2 * temp + (Nx + 1) - 1) % (Nx + 1)]
-    #     edgesP2y[i + temp + 1] = listPy[(count + 2 * temp + (Nx + 1) - 1) // (Nx + 1)]
-    #
-    #     ownerArray[i + temp] = count + temp
-    #     ownerArray[i + temp + 1] = count + temp
-    #     neighbourArray[i + temp] = ownerArray[i + temp] + 1
-    #     neighbourArray[i + temp + 1] = neighbourArray[i + temp] + (Nx - 1)
-    #     count += 1
-    #
-    #     distance[i + temp][0] = edgesP2x[i + temp] - edgesP1x[i + temp]
-    #     distance[i + temp][1] = edgesP2y[i + temp] - edgesP1y[i + temp]
-    #     distance[i + temp + 1][0] = edgesP2x[i + temp + 1] - edgesP1x[i + temp + 1]
-    #     distance[i + temp + 1][1] = edgesP2y[i + temp + 1] - edgesP1y[i + temp + 1]
-    #
-    #     edgesLength[i + temp] = math.sqrt(distance[i + temp][0] * distance[i + temp][0] + distance[i + temp][1] *
-    #                                       distance[i + temp][1])
-    #     edgesLength[i + temp + 1] = math.sqrt(distance[i + temp + 1][0] * distance[i + temp + 1][0] +
-    #                                           distance[i + temp + 1][1] * distance[i + temp + 1][1])
-    #
-    #     cellVol[i + temp] = edgesLength[i + temp] * edgesLength[i + temp + 1]
-    #     cellVol[i + temp + 1] = edgesLength[i + temp] * edgesLength[i + temp + 1]
-    #
-    #     faceNormal[i + temp][0] = distance[i + temp][1]
-    #     faceNormal[i + temp][1] = -distance[i + temp][0]
-    #     faceNormal[i + temp + 1][0] = distance[i + temp + 1][1]
-    #     faceNormal[i + temp + 1][1] = -distance[i + temp + 1][0]
-    #
-    #     cellCentre[i + temp][0] = edgesP2x[i + temp] - abs(distance[i + temp + 1][0] / 2)
-    #     cellCentre[i + temp][1] = edgesP2y[i + temp] - abs(distance[i + temp][1] / 2)
-    #     cellCentre[i + temp + 1][0] = edgesP1x[i + temp + 1] - abs(distance[i + temp + 1][0] / 2)
-    #     cellCentre[i + temp + 1][1] = edgesP1y[i + temp + 1] - abs(distance[i + temp][1] / 2)
-    #
-    # for i in range(Ny - 1):
-    #
-    #     index = (i + 1) * (2 * (Nx - 1) + 1) - 1
-    #
-    #     edgesP1[index] = edgesP1[index - 1] + 1
-    #     edgesP2[index] = edgesP2[index - 1] + 1
-    #
-    #     edgesP1x[index] = edgesP1x[index - 1] + dx[Nx - 1]
-    #     edgesP1y[index] = edgesP1y[index - 1]
-    #     edgesP2x[index] = edgesP2x[index - 1] + dx[Nx - 2]
-    #     edgesP2y[index] = edgesP2y[index - 1]
-    #
-    #     ownerArray[index] = (i+1) * Nx
-    #     neighbourArray[index] = neighbourArray[index - 1] + 1
-    #
-    #     distance[index][0] = edgesP2x[index] - edgesP1x[index]
-    #     distance[index][1] = edgesP2y[index] - edgesP1y[index]
-    #
-    #     edgesLength[index] = math.sqrt(distance[index][0] * distance[index][0] + distance[index][1] *
-    #                                    distance[index][1])
-    #
-    #     cellVol[index] = edgesLength[index] * edgesLength[index - 2]
-    #
-    #     faceNormal[index][0] = distance[index][1]
-    #     faceNormal[index][1] = -distance[index][0]
-    #
-    #     cellCentre[index][0] = edgesP1x[index] - abs(distance[index][0] / 2)
-    #     cellCentre[index][1] = edgesP1y[index] - abs(distance[index - 2][1] / 2)
-    #
-    # for i in range(Nx - 1):
-    #
-    #     index = internalEdges - (Nx - 1) + i
-    #
-    #     edgesP1[index] = listP[(N-1) - (Nx-1) - (Nx+1) + i]
-    #     edgesP2[index] = listP[(N-1) - (Nx-1) + i]
-    #
-    #     edgesP1x[index] = listPx[((N-1) - (Nx-1) - (Nx+1) + i) % (Nx+1)]
-    #     edgesP1y[index] = listPy[((N-1) - (Nx-1) - (Nx+1) + i) // (Nx+1)]
-    #     edgesP2x[index] = listPx[((N-1) - (Nx-1) + i) % (Nx+1)]
-    #     edgesP2y[index] = listPy[((N-1) - (Nx-1) + i) // (Nx+1)]
-    #
-    #     ownerArray[index] = (Nx * Ny) - Nx + i+1
-    #     neighbourArray[index] = ownerArray[index] + 1
-    #
-    #     distance[index][0] = edgesP2x[index] - edgesP1x[index]
-    #     distance[index][1] = edgesP2y[index] - edgesP1y[index]
-    #
-    #     edgesLength[index] = math.sqrt(distance[index][0] * distance[index][0] + distance[index][1] *
-    #                                    distance[index][1])
-    #
-    #     cellVol[index] = edgesLength[index] * edgesLength[index - (2 * Nx - 2 - i)]
-    #
-    #     faceNormal[index][0] = distance[index][1]
-    #     faceNormal[index][1] = -distance[index][0]
-    #
-    #     cellCentre[index][0] = edgesP2x[index] - abs(distance[index - (2 * Nx - 2 - i)][0] / 2)
-    #     cellCentre[index][1] = edgesP2y[index] - abs(distance[index][1] / 2)

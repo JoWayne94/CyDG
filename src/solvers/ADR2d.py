@@ -156,7 +156,7 @@ if __name__ == '__main__':
     main()
     """
 
-    name = "/Users/jwtan/PycharmProjects/PyDG/polyMesh/20x11"
+    name = "/Users/jwtan/PycharmProjects/CyDG/polyMesh/3x3"
     nDims = 2
     nVars = 1
     # Uniform polynomial orders in the x and y-directions for now
@@ -181,7 +181,7 @@ if __name__ == '__main__':
     Set initial values using the first coefficients for constant state, or using physical values then 
     transform back to coefficient space
     """
-    test_case = "Hinze"
+    test_case = "Poisson"
     a = np.array([0., 0.])  # constant velocity
     kappa = 0.
     forcing = 0.
@@ -601,38 +601,38 @@ if __name__ == '__main__':
         while endTime - time > 1e-10:
 
             """ Iterate through domain boundaries """
-            # for j in range(4):
-            #     if BCs[j] == "Periodic":
-            #         for i in range(len(boundaryIDs[j])):
-            #             tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[j - 2][i]].facesCell.F[j - 2]. \
-            #                 faceBasis
-            #             g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[j - 2][i]].
-            #                             reshape(-1, 1))
-            #             if j == 0 or j == 2:
-            #                 dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 1]
-            #                 dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 1]
-            #             elif j == 1 or j == 3:
-            #                 dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 0]
-            #                 dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 0]
-            #             else:
-            #                 raise NotImplementedError
-            #
-            #             weight_matrix = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].paramSeg.weights \
-            #                             * abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.
-            #                                   detJacobian)
-            #             tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
-            #             tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceDeriv
-            #             term1 = n_list[j] * np.matmul(
-            #                 (dxi1dx * tmpOwnerDeriv[:, :, 0] + dxi2dx * tmpOwnerDeriv[:, :, 1]).transpose(),
-            #                 weight_matrix * g_d)
-            #             term2 = eta * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
-            #
-            #             fCoeffsGlobal[boundaryIDs[j][i]] = kappa * (term1 + term2).reshape(-1)
-            #
-            # if bottom_BCs or right_BCs or top_BCs or left_BCs == "Periodic":
-            #     f = np.block([
-            #         [fCoeffsGlobal[i]] for i in range(nCells)
-            #     ])
+            for j in range(4):
+                if BCs[j] == "Periodic":
+                    for i in range(len(boundaryIDs[j])):
+                        tmpNeighbourBasis = mesh.connectivityData.cells[boundaryIDs[j - 2][i]].facesCell.F[j - 2]. \
+                            faceBasis
+                        g_d = np.matmul(tmpNeighbourBasis, u.reshape(nCells, dims)[boundaryIDs[j - 2][i]].
+                                        reshape(-1, 1))
+                        if j == 0 or j == 2:
+                            dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 1]
+                            dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 1]
+                        elif j == 1 or j == 3:
+                            dxi1dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 0][:, 0]
+                            dxi2dx = mesh.connectivityData.cells[boundaryIDs[j][i]].geomCell.invJacobian[:, :, 1][:, 0]
+                        else:
+                            raise NotImplementedError
+
+                        weight_matrix = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].paramSeg.weights \
+                                        * abs(mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].geomCell.
+                                              detJacobian)
+                        tmpOwnerBasis = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceBasis
+                        tmpOwnerDeriv = mesh.connectivityData.cells[boundaryIDs[j][i]].facesCell.F[j].faceDeriv
+                        term1 = n_list[j] * np.matmul(
+                            (dxi1dx * tmpOwnerDeriv[:, :, 0] + dxi2dx * tmpOwnerDeriv[:, :, 1]).transpose(),
+                            weight_matrix * g_d)
+                        term2 = eta_[j % 2] * np.matmul(tmpOwnerBasis.transpose(), weight_matrix * g_d)
+
+                        fCoeffsGlobal[boundaryIDs[j][i]] = kappa * (term1 + term2).reshape(-1)
+
+            if bottom_BCs or right_BCs or top_BCs or left_BCs == "Periodic":
+                f = np.block([
+                    [fCoeffsGlobal[i]] for i in range(nCells)
+                ])
 
             RHS = f + np.matmul(M, u.reshape(-1, 1))
 
@@ -646,10 +646,10 @@ if __name__ == '__main__':
             time += deltaT
             print("Current time: " + str(time))
 
-            if abs(record_time - time) < 1e-8:
-                gif_data(mesh, u, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, dims, frame_counter)
-                frame_counter += 1
-                record_time += frame_rate
+            # if abs(record_time - time) < 1e-8:
+            #     gif_data(mesh, u, Z, X, Y, xCoords, yCoords, nCells, nCoords, nVars, dims, frame_counter)
+            #     frame_counter += 1
+            #     record_time += frame_rate
 
     else:
         uCoeffsGlobal = np.matmul(invGlobalMatrix, RHS)  # spsolve(A, RHS) for iterative methods
@@ -663,6 +663,11 @@ if __name__ == '__main__':
     """ Plot solution """
     plt_name = test_case + "_P" + str(P1) + "_T" + str(endTime) + "_N" + str(nCells)
     title = "Numerical solution, final time = {0} s".format(str(endTime))
+    dat = np.array([xCoords, yCoords])
+    a = np.column_stack(dat)
+    hdrtxt = '# rc in AU, #vc in km/s'
+    np.savetxt('test.dat', a, delimiter=' ', header=title)
+
     # plotSolution2d(mesh, nCells, nCoords, nVars, left_boundary, right_boundary,
     #                bottom_boundary, top_boundary, directory, exact_soln, " ", title,
     #                plt_name, save=True)
@@ -670,42 +675,42 @@ if __name__ == '__main__':
     """ Calculate L2 error """
     # calculateL2err2d(mesh, exact_soln, nCells)
 
-    gif_name = plt_name + "_movie"
-    filenames = []
-    for i in range(no_of_frames):
-        levels = MaxNLocator(nbins=20).tick_values(Z[i].min(), Z[i].max())
-        cmap = plt.get_cmap('coolwarm')
-        norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-
-        fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=100)
-
-        cf = ax.contourf(X, Y, Z[i], levels=levels, cmap=cmap)
-        fig.colorbar(cf, ax=ax)
-
-        # Plot the surface
-        ax.title.set_text("Numerical solution, time = {0}".format(str(i * frame_rate)))
-        ax.set_xlim(left_boundary, right_boundary)
-        ax.set_ylim(bottom_boundary, top_boundary)
-        color_tuple = (1.0, 1.0, 1.0, 0.0)
-
-        # Customize the axes
-        ax.xaxis.set_major_formatter('{x:.01f}')
-        ax.yaxis.set_major_formatter('{x:.01f}')
-
-        # create file name and append it to a list
-        filename = f'{i}.png'
-        filenames.append(filename)
-
-        # save frame
-        plt.savefig(filename)
-        plt.close()
-
-    # build gif
-    with imageio.get_writer(f'/Users/jwtan/PycharmProjects/PyDG/src/solvers/gifs/{gif_name}.gif', mode='I') as writer:
-        for filename in filenames:
-            image = imageio.v2.imread(filename)
-            writer.append_data(image)
-
-    # Remove files
-    for filename in set(filenames):
-        os.remove(filename)
+    # gif_name = plt_name + "_movie"
+    # filenames = []
+    # for i in range(no_of_frames):
+    #     levels = MaxNLocator(nbins=20).tick_values(Z[i].min(), Z[i].max())
+    #     cmap = plt.get_cmap('coolwarm')
+    #     norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+    #
+    #     fig, ax = plt.subplots(figsize=(6.4, 4.8), dpi=100)
+    #
+    #     cf = ax.contourf(X, Y, Z[i], levels=levels, cmap=cmap)
+    #     fig.colorbar(cf, ax=ax)
+    #
+    #     # Plot the surface
+    #     ax.title.set_text("Numerical solution, time = {0}".format(str(i * frame_rate)))
+    #     ax.set_xlim(left_boundary, right_boundary)
+    #     ax.set_ylim(bottom_boundary, top_boundary)
+    #     color_tuple = (1.0, 1.0, 1.0, 0.0)
+    #
+    #     # Customize the axes
+    #     ax.xaxis.set_major_formatter('{x:.01f}')
+    #     ax.yaxis.set_major_formatter('{x:.01f}')
+    #
+    #     # create file name and append it to a list
+    #     filename = f'{i}.png'
+    #     filenames.append(filename)
+    #
+    #     # save frame
+    #     plt.savefig(filename)
+    #     plt.close()
+    #
+    # # build gif
+    # with imageio.get_writer(f'/Users/jwtan/PycharmProjects/PyDG/src/solvers/gifs/{gif_name}.gif', mode='I') as writer:
+    #     for filename in filenames:
+    #         image = imageio.v2.imread(filename)
+    #         writer.append_data(image)
+    #
+    # # Remove files
+    # for filename in set(filenames):
+    #     os.remove(filename)
