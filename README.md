@@ -1,4 +1,4 @@
-CyDG is a cythonizable, open-source, modal discontinuous Galerkin code written in Python for prototyping.
+CyDG is a cythonizable, open-source, modal discontinuous Galerkin code written in Python for prototyping purposes.
 Currently, CyDG solves first- and second-order linear systems of Partial Differential Equations (PDEs).
 
 
@@ -6,13 +6,17 @@ Currently, CyDG solves first- and second-order linear systems of Partial Differe
 
 Author: Jo Wayne Tan, 2022.
 
-Python3 code (used Python 3.9 at the time of writing).
-
 The source code is in the src/ folder.
+
+Implemented ADR class equation sets.
 
 scriptSetCython does a Cython compilation of the most computational intensive functions.
 
 scriptUnsetCython reverts the code back to a standard Python implementation.
+
+
+**Setup**
+Library requirements to be installed are listed in requirements.txt (tested version numbers provided).
 
 
 **Using CyDG**
@@ -21,7 +25,7 @@ Examples of Allrun and Allclean scripts are in the tutorials/ directory, with ex
 
 All parameters required for running the case are defined in caseSetup.py.
 
-Meshes are in a cell-based format and in the constant/polyMesh location inside the case directory.
+Meshes are in a cell-based format and in the constant/polyMesh location inside the case directory, generated using meshGen.py.
 
 
 **Dependencies**
