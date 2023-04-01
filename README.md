@@ -1,4 +1,5 @@
-CyDG is a cythonizable, open-source, modal discontinuous Galerkin code written in Python for prototyping purposes.
+# CyDG 
+is a cythonizable, open-source, modal discontinuous Galerkin code written in Python for prototyping purposes.
 Currently, CyDG solves first- and second-order linear systems of Partial Differential Equations (PDEs).
 
 
@@ -16,6 +17,7 @@ scriptUnsetCython reverts the code back to a standard Python implementation.
 
 
 **Setup**
+
 Library requirements to be installed are listed in requirements.txt (tested version numbers provided).
 
 
@@ -32,8 +34,8 @@ Meshes are in a cell-based format and in the constant/polyMesh location inside t
 
 The code is tested using:
 
-python 3.9
-numpy 1.16.6
-scipy 1.7.3
-cython 0.29.30
-psutil 5.8.0
+python 3.9  
+numpy 1.16.6  
+scipy 1.7.3  
+cython 0.29.30  
+psutil 5.8.0  
