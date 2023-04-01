@@ -2,10 +2,12 @@
 File: dgMesh.py
 
 Description: Mesh data needed to do the discontinuous Galerkin discretisation
+
+Notes: Mixed-type mesh currently not supported
 """
 import numpy as np
 from src.library.dgCells.segment import Segment as Seg
-from src.library.dgCells.quadrilateral import Quadrilateral as Quad  # Mesh not mixed for now
+from src.library.dgCells.quadrilateral import Quadrilateral as Quad
 
 
 class DgMesh:
@@ -38,6 +40,7 @@ class DgMesh:
         :param points:          Coordinates of all points stored in a numpy array
         :param pointlabels:     Point IDs stored in a numpy array
         :param boundary:        Dictionary of boundary patches for the simulation
+        :param ndims:           Number of spatial dimensions
         """
         self.connectivityData = self.DgMeshConnectivityData()
         self.derivedData = self.DgMeshDerivedData()
@@ -68,7 +71,7 @@ class DgMesh:
         @:brief Create shape-based cells only after points and point IDs arrays are created
         :param nvars:            Number of state variables
         :param p1:               Polynomial order in the x-direction
-        :param p2:               Polynomial order in the y-direction
+        :param p2:               Polynomial order in the y-direction (default=0, 1D)
         :param polyMeshLocation: Location of polyMesh directory in machine
         :return: Return cell IDs and cell objects list for the mesh object
         """
@@ -83,7 +86,7 @@ class DgMesh:
         @:brief Read points data from points file and create corresponding arrays
         :param ndims:            Number of spatial dimensions
         :param polyMeshLocation: Location of polyMesh directory in machine
-        :return: Return arrays of point IDs and coordinates
+        :return: Arrays of point IDs and coordinates
         """
         # Read in file
         file = open(polyMeshLocation + "/points").read()
@@ -98,7 +101,7 @@ class DgMesh:
         pointsArray = np.empty((nPoints, ndims), dtype=float)
         pointLabelsArray = np.empty(nPoints, dtype=int)
 
-        # Variable used to know in which point the file is
+        # Variable used to know which point it is in the file
         pointCounter = 0
 
         # Variable used to determine point ID and the x, y, z coordinates
@@ -125,9 +128,9 @@ class DgMesh:
         @:brief Read cells data from cells file and create corresponding containers
         :param nvars:            Number of state variables
         :param p1:               Polynomial order in the x-direction
-        :param p2:               Polynomial order in the y-direction
+        :param p2:               Polynomial order in the y-direction (default=0, 1D)
         :param polyMeshLocation: Location of polyMesh directory in machine
-        :return: Return arrays of cell IDs, cell objects, point neighbours, and faces
+        :return: Arrays of cell IDs, cell objects, point neighbours and faces
         """
         # Read in file
         file = open(polyMeshLocation + "/cells").read().splitlines()
@@ -222,7 +225,7 @@ class DgMesh:
                 # Cell neighbours IDs list
                 neighboursList = []
                 # Iterate over all vertices of a shape
-                for vertex in range(2):  # 2 if 1D, 3 if 2D tri, 4 if 2D quad
+                for vertex in range(2):
                     # Iterate over all internal faces corresponding to current cell, if vertex IDs correspond to
                     # point IDs that make up said internal face, store neighbouring cell ID to list
                     neighboursList.append(next(iter([list(facesList[face][1] ^ {i})[0] for face in cellInFaceList if
@@ -241,9 +244,9 @@ class DgMesh:
                 # Cell neighbours IDs list
                 neighboursList = []
                 # Iterate over all vertices of a shape
-                for vertex in range(4):  # 2 if 1D, 3 if 2D tri, 4 if 2D quad
+                for vertex in range(4):  # 3 if 2D tri, 4 if 2D quad
                     nextVertex = vertex + 1
-                    if nextVertex == 4:  # 2 if 1D, 3 if 2D tri, 4 if 2D quad
+                    if nextVertex == 4:  # 3 if 2D tri, 4 if 2D quad
                         nextVertex = 0  # go back to first vertex
 
                     # Iterate over all internal faces corresponding to current cell, if vertex IDs correspond to
