@@ -1,11 +1,13 @@
 """
 File: functions.py
 
-Description: Memory and start statement print functions, plot functions
+Description: Functions including:
+            - Memory and start statement print functions
+            - Plotting
+            - Error calculations
 """
 import os
 import psutil
-import numpy as np
 import matplotlib.pyplot as plt
 from src.library.paramCells.basis import *
 from matplotlib.ticker import LinearLocator
@@ -18,7 +20,7 @@ def printMemoryUsageInMB():
 
 
 def startStatement(solverName, caseDir, date):
-    print("""--------------- PyDG v1.0 ---------------""")
+    print("""--------------- CyDG v1.0 ---------------""")
     print("Solver           : " + solverName)
     print("Case             : " + caseDir)
     print("Date and time    : " + date)
@@ -26,6 +28,14 @@ def startStatement(solverName, caseDir, date):
 
 
 def save_solution(coords, solution, path, name):
+    """
+    @:brief Plot physical solutions
+    :param coords: Physical coordinates
+    :param solution: Solution values
+    :param path: Directory path
+    :param name: Name of files
+    :return: None
+    """
     # Check whether the specified path exists or not
     isExist = os.path.exists(path)
     if not isExist:

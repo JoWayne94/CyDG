@@ -1,5 +1,5 @@
 # CyDG 
-is a cythonizable, open-source, modal discontinuous Galerkin code written in Python for prototyping purposes.
+(v1.0) is a cythonizable, open-source, modal discontinuous Galerkin code written in Python for prototyping purposes.
 Currently, CyDG solves first- and second-order linear systems of Partial Differential Equations (PDEs).
 
 
